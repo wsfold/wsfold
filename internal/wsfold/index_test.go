@@ -95,9 +95,9 @@ func TestResolvePrefersRequestedTrustClassAndErrorsOnAmbiguity(t *testing.T) {
 
 	index := RepoIndex{
 		Repos: []Repo{
-			{Name: "shared", CheckoutPath: "/trusted/shared", TrustClass: TrustClassTrusted},
-			{Name: "shared", CheckoutPath: "/external/shared", TrustClass: TrustClassExternal},
-			{Name: "shared", CheckoutPath: "/external/shared-2", TrustClass: TrustClassExternal},
+			{Name: "shared", LocalName: "shared", CheckoutPath: "/trusted/shared", TrustClass: TrustClassTrusted},
+			{Name: "shared", LocalName: "shared", CheckoutPath: "/external/shared", TrustClass: TrustClassExternal},
+			{Name: "shared", LocalName: "shared", CheckoutPath: "/external/shared-2", TrustClass: TrustClassExternal},
 		},
 	}
 
@@ -112,6 +112,38 @@ func TestResolvePrefersRequestedTrustClassAndErrorsOnAmbiguity(t *testing.T) {
 	_, err = index.Resolve("shared", TrustClassExternal)
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("expected ambiguity error, got %v", err)
+	}
+}
+
+func TestResolveSupportsLocalFolderAlias(t *testing.T) {
+	t.Parallel()
+
+	index := RepoIndex{
+		Repos: []Repo{
+			{
+				LocalName:    "math-app",
+				Name:         "math",
+				Slug:         "mikhail-yaskou/math",
+				CheckoutPath: "/trusted/math-app",
+				TrustClass:   TrustClassTrusted,
+			},
+		},
+	}
+
+	repo, err := index.Resolve("math-app", TrustClassTrusted)
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if repo.CheckoutPath != "/trusted/math-app" {
+		t.Fatalf("unexpected repo from local alias: %#v", repo)
+	}
+
+	repo, err = index.Resolve("mikhail-yaskou/math", TrustClassTrusted)
+	if err != nil {
+		t.Fatalf("Resolve returned error for slug: %v", err)
+	}
+	if repo.CheckoutPath != "/trusted/math-app" {
+		t.Fatalf("unexpected repo from slug: %#v", repo)
 	}
 }
 

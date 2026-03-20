@@ -82,6 +82,31 @@ func TestSummonMissingTrustedRepoClones(t *testing.T) {
 	}
 }
 
+func TestSummonSupportsLocalFolderAlias(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+
+	repoPath := filepath.Join(h.TrustedRoot, "math-app")
+	h.InitRepo(repoPath)
+	h.RunGit(repoPath, "remote", "add", "origin", "git@github.com:mikhail-yaskou/math.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Summon(h.Workspace, "math-app"); err != nil {
+		t.Fatalf("Summon returned error for local folder alias: %v", err)
+	}
+
+	link := filepath.Join(h.Workspace, "_prj", "math")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("read symlink: %v", err)
+	}
+	if target != repoPath {
+		t.Fatalf("unexpected symlink target: %s", target)
+	}
+}
+
 func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 	t.Run("existing external repo", func(t *testing.T) {
 		h := testutil.NewHarness(t)

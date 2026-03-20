@@ -10,6 +10,7 @@ const (
 )
 
 type Repo struct {
+	LocalName    string
 	Name         string
 	Slug         string
 	CheckoutPath string

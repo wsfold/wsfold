@@ -94,7 +94,9 @@ func discoverReposUnderRoot(root string, trustClass TrustClass, runner Runner) (
 
 func buildRepo(path string, trustClass TrustClass, runner Runner) Repo {
 	path = filepath.Clean(path)
+	localName := strings.ToLower(filepath.Base(strings.TrimSpace(path)))
 	repo := Repo{
+		LocalName:    localName,
 		Name:         strings.ToLower(filepath.Base(path)),
 		CheckoutPath: path,
 		TrustClass:   trustClass,
@@ -155,7 +157,8 @@ func (idx RepoIndex) resolveExactSlug(ref string, requested TrustClass) (Repo, b
 func (idx RepoIndex) byShortName(name string, requested TrustClass) []Repo {
 	matches := make([]Repo, 0)
 	for _, repo := range idx.Repos {
-		if repo.Name == strings.ToLower(name) {
+		normalized := strings.ToLower(name)
+		if repo.Name == normalized || repo.LocalName == normalized {
 			matches = append(matches, repo)
 		}
 	}

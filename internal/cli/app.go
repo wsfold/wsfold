@@ -13,9 +13,9 @@ const helpText = `wsfold composes trusted and external repositories around the c
 
 Usage:
   wsfold init
-  wsfold summon <repo-ref>
-  wsfold summon-untrusted <repo-ref>
-  wsfold dismiss <repo-ref>
+  wsfold summon [repo-ref]
+  wsfold summon-untrusted [repo-ref]
+  wsfold dismiss [repo-ref]
   wsfold version
   wsfold completion zsh
 
@@ -63,18 +63,37 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return app.Init(cwd)
 	}
 
-	if len(args) != 2 {
-		return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
-	}
-
 	switch args[0] {
 	case "summon":
-		return app.Summon(cwd, args[1])
+		ref, err := resolveCommandRef(app, cwd, "summon", args, stdout, stderr)
+		if err != nil {
+			return err
+		}
+		return app.Summon(cwd, ref)
 	case "summon-untrusted":
-		return app.SummonUntrusted(cwd, args[1])
+		ref, err := resolveCommandRef(app, cwd, "summon-untrusted", args, stdout, stderr)
+		if err != nil {
+			return err
+		}
+		return app.SummonUntrusted(cwd, ref)
 	case "dismiss":
-		return app.Dismiss(cwd, args[1])
+		ref, err := resolveCommandRef(app, cwd, "dismiss", args, stdout, stderr)
+		if err != nil {
+			return err
+		}
+		return app.Dismiss(cwd, ref)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
+	}
+}
+
+func resolveCommandRef(app *wsfold.App, cwd string, command string, args []string, stdout io.Writer, stderr io.Writer) (string, error) {
+	switch len(args) {
+	case 1:
+		return runPicker(app, cwd, command, stdout, stderr)
+	case 2:
+		return args[1], nil
+	default:
+		return "", fmt.Errorf("%s accepts zero or one repo ref, got %d arguments", command, len(args)-1)
 	}
 }

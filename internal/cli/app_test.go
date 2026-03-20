@@ -2,8 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
+
+	"github.com/openclaw/wsfold/internal/wsfold"
 )
 
 func TestRunHelp(t *testing.T) {
@@ -85,5 +88,47 @@ func TestRunCompletionZsh(t *testing.T) {
 
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr output: %q", stderr.String())
+	}
+}
+
+func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
+	original := runPicker
+	t.Cleanup(func() { runPicker = original })
+
+	called := false
+	runPicker = func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) (string, error) {
+		called = true
+		if command != "summon" {
+			t.Fatalf("unexpected picker command: %s", command)
+		}
+		return "picked-repo", nil
+	}
+
+	ref, err := resolveCommandRef(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("resolveCommandRef returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected picker to be called")
+	}
+	if ref != "picked-repo" {
+		t.Fatalf("unexpected picker result: %q", ref)
+	}
+}
+
+func TestResolveCommandRefAllowsExplicitRepoRef(t *testing.T) {
+	ref, err := resolveCommandRef(wsfold.NewApp(), "/tmp/workspace", "dismiss", []string{"dismiss", "math-app"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("resolveCommandRef returned error: %v", err)
+	}
+	if ref != "math-app" {
+		t.Fatalf("unexpected explicit repo ref: %q", ref)
+	}
+}
+
+func TestResolveCommandRefRejectsExtraArgs(t *testing.T) {
+	_, err := resolveCommandRef(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "summon accepts zero or one repo ref") {
+		t.Fatalf("unexpected resolveCommandRef error: %v", err)
 	}
 }

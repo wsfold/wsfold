@@ -5,21 +5,34 @@ WSFold is a local-first Go CLI for composing trusted and external Git repositori
 In v1 it supports:
 
 - `wsfold init` for initializing a workspace in the current directory
-- `wsfold summon <repo-ref>` for trusted repository attachment
-- `wsfold summon-untrusted <repo-ref>` for external repository visibility without symlink embedding
-- `wsfold dismiss <repo-ref>` for removing a repo from the current composition
+- `wsfold summon [repo-ref]` for trusted repository attachment
+- `wsfold summon-untrusted [repo-ref]` for external repository visibility without symlink embedding
+- `wsfold dismiss [repo-ref]` for removing a repo from the current composition
 - deterministic `.wsfold/manifest.yaml` state
-- deterministic `wsfold.code-workspace` generation for VS Code multi-root workspaces
+- deterministic `<workspace-dirname>.code-workspace` generation for VS Code multi-root workspaces
 
 ## Usage
 
-Run commands from the primary repository or worktree root:
+Initialize once from the directory you want to treat as the primary workspace:
 
 ```bash
 wsfold init
+```
+
+After that, run commands from anywhere inside that workspace tree:
+
+```bash
 wsfold summon acme/service
 wsfold summon-untrusted other/legacy-tool
 wsfold dismiss acme/service
+```
+
+If you omit `repo-ref`, `wsfold` opens an interactive Bubble Tea picker with live fuzzy filtering:
+
+```bash
+wsfold summon
+wsfold summon-untrusted
+wsfold dismiss
 ```
 
 Zsh completion:

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/openclaw/wsfold/internal/buildinfo"
 	"github.com/openclaw/wsfold/internal/wsfold"
 )
 
@@ -14,16 +15,23 @@ Usage:
   wsfold summon <repo-ref>
   wsfold summon-untrusted <repo-ref>
   wsfold dismiss <repo-ref>
+  wsfold version
 
 Commands:
   summon            attach a trusted repository into ./refs and refresh the workspace
   summon-untrusted  add an external repository as a workspace root only
   dismiss           remove a repository from the current composition
+  version           print build version metadata
 `
 
 func Run(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
 		_, err := io.WriteString(stdout, helpText)
+		return err
+	}
+
+	if args[0] == "--version" || args[0] == "version" {
+		_, err := fmt.Fprintf(stdout, "wsfold %s (commit %s, built %s)\n", buildinfo.Version, buildinfo.Commit, buildinfo.Date)
 		return err
 	}
 

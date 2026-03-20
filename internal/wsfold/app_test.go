@@ -14,10 +14,7 @@ func TestSummonExistingTrustedRepo(t *testing.T) {
 	setEnv(t, h)
 	initWorkspace(t, h)
 
-	repoPath := filepath.Join(h.TrustedRoot, "acme", "service")
-	if err := os.MkdirAll(filepath.Dir(repoPath), 0o755); err != nil {
-		t.Fatalf("mkdir trusted repo parent: %v", err)
-	}
+	repoPath := filepath.Join(h.TrustedRoot, "service")
 	h.InitRepo(repoPath)
 	h.RunGit(repoPath, "remote", "add", "origin", "https://github.com/acme/service.git")
 

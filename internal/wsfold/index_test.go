@@ -157,7 +157,7 @@ func TestFindOrCloneRepoClonesIntoExpectedRoot(t *testing.T) {
 		TrustedGitHubOrgs: []string{"acme"},
 	}
 
-	repo, err := findOrCloneRepo(cfg, Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}, RepoIndex{}, "acme/service", TrustClassTrusted)
+	repo, err := findOrCloneRepo(cfg, Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}, "acme/service", TrustClassTrusted)
 	if err != nil {
 		t.Fatalf("findOrCloneRepo returned error: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestFindOrCloneRepoRejectsTrustedClassificationForUntrustedCommand(t *testi
 		TrustedGitHubOrgs: []string{"acme"},
 	}
 
-	_, err := findOrCloneRepo(cfg, Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}, RepoIndex{}, "acme/service", TrustClassExternal)
+	_, err := findOrCloneRepo(cfg, Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}, "acme/service", TrustClassExternal)
 	if err == nil || !strings.Contains(err.Error(), "use summon") {
 		t.Fatalf("expected trusted classification guard, got %v", err)
 	}

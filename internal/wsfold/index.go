@@ -94,20 +94,26 @@ func discoverReposUnderRoot(root string, trustClass TrustClass, runner Runner) (
 
 func buildRepo(path string, trustClass TrustClass, runner Runner) Repo {
 	path = filepath.Clean(path)
+	return hydrateRepo(buildRepoWithoutOrigin(path, trustClass), runner)
+}
+
+func buildRepoWithoutOrigin(path string, trustClass TrustClass) Repo {
+	path = filepath.Clean(path)
 	localName := strings.ToLower(filepath.Base(strings.TrimSpace(path)))
-	repo := Repo{
+	return Repo{
 		LocalName:    localName,
 		Name:         strings.ToLower(filepath.Base(path)),
 		CheckoutPath: path,
 		TrustClass:   trustClass,
 	}
+}
 
-	repo.OriginURL = repoOrigin(runner, path)
+func hydrateRepo(repo Repo, runner Runner) Repo {
+	repo.OriginURL = repoOrigin(runner, repo.CheckoutPath)
 	if owner, name, ok := parseGitHubSlug(repo.OriginURL); ok {
 		repo.Slug = owner + "/" + name
 		repo.Name = name
 	}
-
 	return repo
 }
 
@@ -194,8 +200,8 @@ func ambiguityError(ref string, candidates []Repo) error {
 	return fmt.Errorf("repo ref %q is ambiguous: %s", ref, strings.Join(lines, ", "))
 }
 
-func findOrCloneRepo(cfg Config, runner Runner, idx RepoIndex, ref string, requested TrustClass) (Repo, error) {
-	repo, err := idx.Resolve(ref, requested)
+func findOrCloneRepo(cfg Config, runner Runner, ref string, requested TrustClass) (Repo, error) {
+	repo, err := resolveExistingRepo(cfg, runner, ref, requested)
 	if err == nil {
 		return repo, nil
 	}
@@ -246,4 +252,110 @@ func findOrCloneRepo(cfg Config, runner Runner, idx RepoIndex, ref string, reque
 	}
 
 	return buildRepo(destination, requested, runner), nil
+}
+
+func resolveExistingRepo(cfg Config, runner Runner, ref string, requested TrustClass) (Repo, error) {
+	directRepos, err := discoverDirectRepos(cfg, requested)
+	if err != nil {
+		return Repo{}, err
+	}
+
+	idx := RepoIndex{Repos: directRepos}
+	repo, err := idx.Resolve(ref, requested)
+	if err == nil {
+		return hydrateRepo(repo, runner), nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return Repo{}, err
+	}
+
+	owner, name, ok := parseGitHubSlug(ref)
+	if !ok {
+		return Repo{}, os.ErrNotExist
+	}
+
+	candidates, err := discoverSlugCandidates(cfg, runner, owner, name)
+	if err != nil {
+		return Repo{}, err
+	}
+
+	if len(candidates) == 0 {
+		return Repo{}, os.ErrNotExist
+	}
+
+	filtered := filterByTrust(candidates, requested)
+	if len(filtered) == 1 {
+		return filtered[0], nil
+	}
+	if len(filtered) > 1 {
+		return Repo{}, ambiguityError(ref, filtered)
+	}
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+
+	return Repo{}, ambiguityError(ref, candidates)
+}
+
+func discoverDirectRepos(cfg Config, requested TrustClass) ([]Repo, error) {
+	repos := make([]Repo, 0)
+	for _, rootWithTrust := range []struct {
+		root       string
+		trustClass TrustClass
+	}{
+		{root: cfg.TrustedDir, trustClass: TrustClassTrusted},
+		{root: cfg.ExternalDir, trustClass: TrustClassExternal},
+	} {
+		discovered, err := discoverDirectReposUnderRoot(rootWithTrust.root, rootWithTrust.trustClass)
+		if err != nil {
+			return nil, err
+		}
+		repos = append(repos, discovered...)
+	}
+
+	return repos, nil
+}
+
+func discoverDirectReposUnderRoot(root string, trustClass TrustClass) ([]Repo, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", root, err)
+	}
+
+	repos := make([]Repo, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		repoPath := filepath.Join(root, entry.Name())
+		if !isGitRepo(repoPath) {
+			continue
+		}
+		repos = append(repos, buildRepoWithoutOrigin(repoPath, trustClass))
+	}
+	return repos, nil
+}
+
+func discoverSlugCandidates(cfg Config, runner Runner, owner string, name string) ([]Repo, error) {
+	paths := []struct {
+		path       string
+		trustClass TrustClass
+	}{
+		{path: filepath.Join(cfg.TrustedDir, owner, name), trustClass: TrustClassTrusted},
+		{path: filepath.Join(cfg.ExternalDir, owner, name), trustClass: TrustClassExternal},
+	}
+
+	candidates := make([]Repo, 0, len(paths))
+	for _, candidate := range paths {
+		if !isGitRepo(candidate.path) {
+			continue
+		}
+		candidates = append(candidates, hydrateRepo(buildRepoWithoutOrigin(candidate.path, candidate.trustClass), runner))
+	}
+	return candidates, nil
+}
+
+func isGitRepo(path string) bool {
+	info, err := os.Stat(filepath.Join(path, ".git"))
+	return err == nil && info != nil
 }

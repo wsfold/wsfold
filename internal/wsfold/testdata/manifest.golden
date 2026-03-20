@@ -1,0 +1,11 @@
+version: 1
+primary_root: {{PRIMARY_ROOT}}
+trusted:
+    - repo_ref: acme/service
+      checkout_path: /trusted/acme/service
+      trust_class: trusted
+      mount_path: {{PRIMARY_ROOT}}/refs/service
+external:
+    - repo_ref: legacy/tool
+      checkout_path: /external/legacy/tool
+      trust_class: external

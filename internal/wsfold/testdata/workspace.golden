@@ -1,0 +1,24 @@
+{
+  "folders": [
+    {
+      "name": "{{PRIMARY_NAME}}",
+      "path": "{{PRIMARY_ROOT}}"
+    },
+    {
+      "name": "service",
+      "path": "/trusted/acme/service"
+    },
+    {
+      "name": "tool",
+      "path": "/external/legacy/tool"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "refs": true
+    },
+    "search.exclude": {
+      "refs": true
+    }
+  }
+}

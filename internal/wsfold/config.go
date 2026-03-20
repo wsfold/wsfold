@@ -12,12 +12,14 @@ const (
 	envTrustedDir        = "WSFOLD_TRUSTED_DIR"
 	envExternalDir       = "WSFOLD_EXTERNAL_DIR"
 	envTrustedGitHubOrgs = "WSFOLD_TRUSTED_GITHUB_ORGS"
+	envProjectsDir       = "WSFOLD_PROJECTS_DIR"
 )
 
 type Config struct {
 	TrustedDir        string
 	ExternalDir       string
 	TrustedGitHubOrgs []string
+	ProjectsDirName   string
 }
 
 func LoadConfig() (Config, error) {
@@ -59,7 +61,17 @@ func loadConfig(lookupEnv func(string) (string, bool)) (Config, error) {
 		TrustedDir:        trustedDir,
 		ExternalDir:       externalDir,
 		TrustedGitHubOrgs: orgs,
+		ProjectsDirName:   loadProjectsDirName(lookupEnv),
 	}, nil
+}
+
+func loadProjectsDirName(lookupEnv func(string) (string, bool)) string {
+	raw, ok := lookupEnv(envProjectsDir)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return "_prj"
+	}
+
+	return strings.TrimSpace(raw)
 }
 
 func parseTrustedGitHubOrgs(raw string) ([]string, error) {

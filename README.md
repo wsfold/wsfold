@@ -40,10 +40,11 @@ export WSFOLD_TRUSTED_GITHUB_ORGS="acme,platform-team"
 
 Rules:
 
-- repos under `WSFOLD_TRUSTED_DIR` are eligible for `./refs/<name>` symlink mounting
+- repos under `WSFOLD_TRUSTED_DIR` are eligible for `./_prj/<name>` symlink mounting by default
 - repos under `WSFOLD_EXTERNAL_DIR` are never symlinked into the workspace tree
 - missing GitHub repos from trusted orgs clone into `WSFOLD_TRUSTED_DIR`
 - all other clone targets default to `WSFOLD_EXTERNAL_DIR`
+- `WSFOLD_PROJECTS_DIR` optionally overrides the trusted mount directory name; default is `_prj`
 
 ## Generated Files
 
@@ -51,9 +52,9 @@ WSFold writes task-local state into the active workspace:
 
 - `./.wsfold/manifest.yaml`
 - `./wsfold.code-workspace`
-- `./refs/<name>` for trusted attachments only
+- `./_prj/<name>` for trusted attachments only by default
 
-Trusted repos are both symlinked under `refs/` and added as VS Code roots.
+Trusted repos are both symlinked under `_prj/` and added as VS Code roots.
 External repos are added only as VS Code roots.
 
 ## Development

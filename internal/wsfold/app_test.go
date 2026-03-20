@@ -27,7 +27,7 @@ func TestSummonExistingTrustedRepo(t *testing.T) {
 		t.Fatalf("Summon returned error: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "refs", "service")
+	link := filepath.Join(h.Workspace, "_prj", "service")
 	target, err := os.Readlink(link)
 	if err != nil {
 		t.Fatalf("read symlink: %v", err)
@@ -98,8 +98,8 @@ func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 			t.Fatalf("SummonUntrusted returned error: %v", err)
 		}
 
-		if _, err := os.Lstat(filepath.Join(h.Workspace, "refs", "legacy-tool")); !os.IsNotExist(err) {
-			t.Fatalf("expected no symlink under refs, got %v", err)
+		if _, err := os.Lstat(filepath.Join(h.Workspace, "_prj", "legacy-tool")); !os.IsNotExist(err) {
+			t.Fatalf("expected no symlink under _prj, got %v", err)
 		}
 	})
 
@@ -144,7 +144,7 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 
 	trustedClone := filepath.Join(h.TrustedRoot, "acme", "service")
 	externalClone := filepath.Join(h.ExternalRoot, "other", "legacy-tool")
-	trustedLink := filepath.Join(h.Workspace, "refs", "service")
+	trustedLink := filepath.Join(h.Workspace, "_prj", "service")
 
 	if err := app.Dismiss(h.Workspace, "service"); err != nil {
 		t.Fatalf("Dismiss trusted returned error: %v", err)
@@ -180,7 +180,7 @@ func TestDismissAfterManualSymlinkRemoval(t *testing.T) {
 		t.Fatalf("Summon returned error: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "refs", "service")
+	link := filepath.Join(h.Workspace, "_prj", "service")
 	if err := os.Remove(link); err != nil {
 		t.Fatalf("remove link: %v", err)
 	}
@@ -217,8 +217,19 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 	if _, err := os.Stat(externalClone); err != nil {
 		t.Fatalf("external clone missing after smoke flow: %v", err)
 	}
-	if _, err := os.Lstat(filepath.Join(h.Workspace, "refs", "service")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(filepath.Join(h.Workspace, "_prj", "service")); !os.IsNotExist(err) {
 		t.Fatalf("trusted symlink should be gone after dismiss, got %v", err)
+	}
+
+	workspaceBytes, err := os.ReadFile(workspacePath(h.Workspace))
+	if err != nil {
+		t.Fatalf("read workspace file: %v", err)
+	}
+	if !strings.Contains(string(workspaceBytes), `"name": "`+filepath.Base(h.Workspace)+`"`) {
+		t.Fatalf("workspace should keep the primary root folder by workspace basename:\n%s", string(workspaceBytes))
+	}
+	if !strings.Contains(string(workspaceBytes), `"files.exclude":`) || !strings.Contains(string(workspaceBytes), `"_prj": true`) {
+		t.Fatalf("workspace should exclude _prj from explorer/search/watcher:\n%s", string(workspaceBytes))
 	}
 
 	manifest, err := loadManifest(h.Workspace)
@@ -232,7 +243,7 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 		t.Fatalf("unexpected final external entries: %#v", manifest.External)
 	}
 
-	workspaceBytes, err := os.ReadFile(workspacePath(h.Workspace))
+	workspaceBytes, err = os.ReadFile(workspacePath(h.Workspace))
 	if err != nil {
 		t.Fatalf("read workspace file: %v", err)
 	}
@@ -250,4 +261,5 @@ func setEnv(t *testing.T, h *testutil.Harness) {
 		key, value, _ := strings.Cut(env, "=")
 		t.Setenv(key, value)
 	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
 }

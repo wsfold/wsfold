@@ -18,7 +18,7 @@ Usage:
   wsfold version
 
 Commands:
-  summon            attach a trusted repository into ./refs and refresh the workspace
+  summon            attach a trusted repository into the configured projects directory and refresh the workspace
   summon-untrusted  add an external repository as a workspace root only
   dismiss           remove a repository from the current composition
   version           print build version metadata

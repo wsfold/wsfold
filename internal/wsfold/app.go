@@ -62,7 +62,7 @@ func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 	}
 
 	if requested == TrustClassTrusted {
-		entry.MountPath = filepath.Join(primaryRoot, "refs", repo.Name)
+		entry.MountPath = filepath.Join(primaryRoot, cfg.ProjectsDirName, repo.Name)
 		if err := ensureTrustedSymlink(entry.MountPath, repo.CheckoutPath); err != nil {
 			return err
 		}
@@ -72,7 +72,7 @@ func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 	if err := saveManifest(primaryRoot, manifest); err != nil {
 		return err
 	}
-	if err := writeWorkspace(primaryRoot, manifest); err != nil {
+	if err := writeWorkspace(primaryRoot, manifest, cfg.ProjectsDirName); err != nil {
 		return err
 	}
 
@@ -115,7 +115,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 	if err := saveManifest(primaryRoot, manifest); err != nil {
 		return err
 	}
-	if err := writeWorkspace(primaryRoot, manifest); err != nil {
+	if err := writeWorkspace(primaryRoot, manifest, cfg.ProjectsDirName); err != nil {
 		return err
 	}
 
@@ -124,7 +124,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 
 func ensureTrustedSymlink(linkPath, target string) error {
 	if err := os.MkdirAll(filepath.Dir(linkPath), 0o755); err != nil {
-		return fmt.Errorf("create refs directory: %w", err)
+		return fmt.Errorf("create projects directory: %w", err)
 	}
 
 	if info, err := os.Lstat(linkPath); err == nil {

@@ -23,15 +23,15 @@ func workspacePath(primaryRoot string) string {
 	return filepath.Join(primaryRoot, workspaceFileName)
 }
 
-func writeWorkspace(primaryRoot string, manifest Manifest) error {
-	data, err := renderWorkspace(manifest)
+func writeWorkspace(primaryRoot string, manifest Manifest, projectsDirName string) error {
+	data, err := renderWorkspace(manifest, projectsDirName)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(workspacePath(primaryRoot), data, 0o644)
 }
 
-func renderWorkspace(manifest Manifest) ([]byte, error) {
+func renderWorkspace(manifest Manifest, projectsDirName string) ([]byte, error) {
 	folders := []workspaceFolder{
 		{Name: filepath.Base(manifest.PrimaryRoot), Path: manifest.PrimaryRoot},
 	}
@@ -52,10 +52,13 @@ func renderWorkspace(manifest Manifest) ([]byte, error) {
 		Folders: folders,
 		Settings: map[string]any{
 			"files.exclude": map[string]bool{
-				"refs": true,
+				projectsDirName: true,
+			},
+			"files.watcherExclude": map[string]bool{
+				projectsDirName: true,
 			},
 			"search.exclude": map[string]bool{
-				"refs": true,
+				projectsDirName: true,
 			},
 		},
 	}

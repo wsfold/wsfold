@@ -19,7 +19,7 @@ func TestRenderWorkspaceMatchesGoldenAndIsDeterministic(t *testing.T) {
 				RepoRef:      "acme/service",
 				CheckoutPath: "/trusted/acme/service",
 				TrustClass:   TrustClassTrusted,
-				MountPath:    filepath.Join(root, "refs", "service"),
+				MountPath:    filepath.Join(root, "_prj", "service"),
 			},
 		},
 		External: []Entry{
@@ -31,11 +31,11 @@ func TestRenderWorkspaceMatchesGoldenAndIsDeterministic(t *testing.T) {
 		},
 	}
 
-	first, err := renderWorkspace(manifest)
+	first, err := renderWorkspace(manifest, "_prj")
 	if err != nil {
 		t.Fatalf("renderWorkspace returned error: %v", err)
 	}
-	second, err := renderWorkspace(manifest)
+	second, err := renderWorkspace(manifest, "_prj")
 	if err != nil {
 		t.Fatalf("renderWorkspace returned error: %v", err)
 	}

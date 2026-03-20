@@ -15,10 +15,13 @@
   ],
   "settings": {
     "files.exclude": {
-      "refs": true
+      "_prj": true
+    },
+    "files.watcherExclude": {
+      "_prj": true
     },
     "search.exclude": {
-      "refs": true
+      "_prj": true
     }
   }
 }

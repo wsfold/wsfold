@@ -65,3 +65,47 @@ func TestClassifyCloneTarget(t *testing.T) {
 		t.Fatalf("expected non-github ref to default external, got %v", trustClass)
 	}
 }
+
+func TestLoadProjectsDirNameDefaultsAndOverrides(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := loadConfig(func(key string) (string, bool) {
+		switch key {
+		case envTrustedDir:
+			return "/tmp/trusted", true
+		case envExternalDir:
+			return "/tmp/external", true
+		case envTrustedGitHubOrgs:
+			return "acme", true
+		default:
+			return "", false
+		}
+	})
+	if err != nil {
+		t.Fatalf("loadConfig returned error: %v", err)
+	}
+	if cfg.ProjectsDirName != "_prj" {
+		t.Fatalf("expected default projects dir, got %q", cfg.ProjectsDirName)
+	}
+
+	cfg, err = loadConfig(func(key string) (string, bool) {
+		switch key {
+		case envTrustedDir:
+			return "/tmp/trusted", true
+		case envExternalDir:
+			return "/tmp/external", true
+		case envTrustedGitHubOrgs:
+			return "acme", true
+		case envProjectsDir:
+			return "_ctx", true
+		default:
+			return "", false
+		}
+	})
+	if err != nil {
+		t.Fatalf("loadConfig returned error: %v", err)
+	}
+	if cfg.ProjectsDirName != "_ctx" {
+		t.Fatalf("expected overridden projects dir, got %q", cfg.ProjectsDirName)
+	}
+}

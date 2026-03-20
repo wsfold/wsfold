@@ -70,7 +70,7 @@ func TestRunCompletionZsh(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "#compdef wsfold") {
+	if !strings.Contains(stdout.String(), "compdef _wsfold wsfold") {
 		t.Fatalf("unexpected completion output: %q", stdout.String())
 	}
 

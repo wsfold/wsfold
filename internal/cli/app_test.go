@@ -58,3 +58,23 @@ func TestRunVersion(t *testing.T) {
 		t.Fatalf("unexpected stderr output: %q", stderr.String())
 	}
 }
+
+func TestRunCompletionZsh(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"completion", "zsh"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), "#compdef wsfold") {
+		t.Fatalf("unexpected completion output: %q", stdout.String())
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr output: %q", stderr.String())
+	}
+}

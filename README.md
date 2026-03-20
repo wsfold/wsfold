@@ -20,6 +20,18 @@ wsfold summon-untrusted other/legacy-tool
 wsfold dismiss acme/service
 ```
 
+Zsh completion:
+
+```bash
+eval "$(wsfold completion zsh)"
+```
+
+This local completion currently suggests:
+
+- trusted local repos for `wsfold summon`
+- external local repos for `wsfold summon-untrusted`
+- repos already attached in the current workspace for `wsfold dismiss`
+
 `repo-ref` is slug-first:
 
 - `owner/name`

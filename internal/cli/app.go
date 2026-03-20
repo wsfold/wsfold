@@ -16,12 +16,14 @@ Usage:
   wsfold summon-untrusted <repo-ref>
   wsfold dismiss <repo-ref>
   wsfold version
+  wsfold completion zsh
 
 Commands:
   summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj} and refresh the workspace
   summon-untrusted  add an external repository as a workspace root only
   dismiss           remove a repository from the current composition
   version           print build version metadata
+  completion        print shell completion setup
 `
 
 func Run(args []string, stdout, stderr io.Writer) error {
@@ -35,14 +37,23 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	if len(args) != 2 {
-		return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
-	}
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
+
+	if args[0] == "completion" {
+		return writeCompletions(cwd, args, stdout)
+	}
+
+	if args[0] == "__complete" {
+		return writeDynamicCompletions(cwd, args, stdout)
+	}
+
+	if len(args) != 2 {
+		return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
+	}
+
 	app := wsfold.NewApp()
 	app.Stdout = stdout
 	app.Stderr = stderr

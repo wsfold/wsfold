@@ -22,6 +22,8 @@ func TestPickerModelSupportsMultiSelect(t *testing.T) {
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	model = updated.(pickerModel)
 
@@ -31,7 +33,7 @@ func TestPickerModelSupportsMultiSelect(t *testing.T) {
 	}
 }
 
-func TestPickerModelEnterSelectsCurrentWhenNothingMarked(t *testing.T) {
+func TestPickerModelEnterAllowsEmptySelection(t *testing.T) {
 	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
 		{Value: "alpha"},
 		{Value: "beta"},
@@ -43,7 +45,31 @@ func TestPickerModelEnterSelectsCurrentWhenNothingMarked(t *testing.T) {
 	model = updated.(pickerModel)
 
 	selected := model.selectedValues()
-	if len(selected) != 1 || selected[0] != "beta" {
-		t.Fatalf("unexpected selected values after single confirm: %#v", selected)
+	if len(selected) != 0 {
+		t.Fatalf("expected empty selected values after confirm without toggles: %#v", selected)
+	}
+}
+
+func TestPickerModelPreselectsAttachedReposForSummon(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "alpha", Attached: true},
+		{Value: "beta", Attached: false},
+	})
+
+	if !model.selected["alpha"] {
+		t.Fatalf("expected attached repo to start selected, got %#v", model.selected)
+	}
+	if model.selected["beta"] {
+		t.Fatalf("did not expect unattached repo to start selected, got %#v", model.selected)
+	}
+}
+
+func TestPickerModelDoesNotPreselectDismissCandidates(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Value: "alpha", Attached: true},
+	})
+
+	if len(model.selected) != 0 {
+		t.Fatalf("did not expect dismiss picker to preselect entries, got %#v", model.selected)
 	}
 }

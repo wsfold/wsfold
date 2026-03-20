@@ -101,18 +101,15 @@ func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 		if command != "summon" {
 			t.Fatalf("unexpected picker command: %s", command)
 		}
-		return []string{"picked-repo", "picked-repo-2"}, nil
+		return []string{}, errPickerCancelled
 	}
 
-	refs, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err != nil {
-		t.Fatalf("resolveCommandRefs returned error: %v", err)
+	err := Run([]string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err != errPickerCancelled {
+		t.Fatalf("unexpected Run error: %v", err)
 	}
 	if !called {
 		t.Fatal("expected picker to be called")
-	}
-	if len(refs) != 2 || refs[0] != "picked-repo" || refs[1] != "picked-repo-2" {
-		t.Fatalf("unexpected picker result: %#v", refs)
 	}
 }
 
@@ -130,5 +127,21 @@ func TestResolveCommandRefsRejectsExtraArgs(t *testing.T) {
 	_, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "summon accepts zero or one repo ref") {
 		t.Fatalf("unexpected resolveCommandRefs error: %v", err)
+	}
+}
+
+func TestPlanSelectionChanges(t *testing.T) {
+	candidates := []wsfold.CompletionCandidate{
+		{Value: "alpha", Attached: true},
+		{Value: "beta", Attached: false},
+		{Value: "gamma", Attached: true},
+	}
+
+	adds, removes := planSelectionChanges(candidates, []string{"alpha", "beta"})
+	if len(adds) != 1 || adds[0] != "beta" {
+		t.Fatalf("unexpected adds: %#v", adds)
+	}
+	if len(removes) != 1 || removes[0] != "gamma" {
+		t.Fatalf("unexpected removes: %#v", removes)
 	}
 }

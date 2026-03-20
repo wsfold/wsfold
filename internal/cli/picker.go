@@ -48,11 +48,7 @@ func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.W
 	if result.err != nil {
 		return nil, result.err
 	}
-	selected := result.selectedValues()
-	if len(selected) == 0 {
-		return nil, fmt.Errorf("no selection made")
-	}
-	return selected, nil
+	return result.selectedValues(), nil
 }
 
 type pickerItem struct {
@@ -91,6 +87,13 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 		input:    input,
 		items:    items,
 		selected: map[string]bool{},
+	}
+	if command == "summon" || command == "summon-untrusted" {
+		for _, candidate := range candidates {
+			if candidate.Attached {
+				model.selected[candidate.Value] = true
+			}
+		}
 	}
 	model.refresh()
 	return model
@@ -134,15 +137,6 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "enter":
-			if len(m.filtered) == 0 {
-				return m, nil
-			}
-			current := m.filtered[m.cursor].candidate.Value
-			if len(m.selected) == 0 {
-				m.selected[current] = true
-			} else if !m.selected[current] {
-				m.selected[current] = true
-			}
 			return m, tea.Quit
 		}
 	}
@@ -205,15 +199,11 @@ func (m pickerModel) View() string {
 		for i := start; i < end; i++ {
 			item := m.filtered[i].candidate
 			prefix := "  "
-			marker := emptyMarkerStyle.Render(" ")
-			if item.Attached {
-				marker = markerStyle.Render("✓")
-			}
 			selectMarker := emptyMarkerStyle.Render("○")
 			if m.selected[item.Value] {
 				selectMarker = markerStyle.Render("●")
 			}
-			render := fmt.Sprintf("%s %s %s", selectMarker, marker, item.Value)
+			render := fmt.Sprintf("%s %s", selectMarker, item.Value)
 			if item.Description != "" {
 				render = fmt.Sprintf("%s  %s", render, descStyle.Render(item.Description))
 			}
@@ -225,7 +215,7 @@ func (m pickerModel) View() string {
 		}
 	}
 
-	lines = append(lines, "", hintStyle.Render("Space toggle, Enter confirm, Esc cancel, type to fuzzy filter"))
+	lines = append(lines, "", hintStyle.Render("Space toggle, Enter apply, Esc cancel, type to fuzzy filter"))
 	return strings.Join(lines, "\n")
 }
 

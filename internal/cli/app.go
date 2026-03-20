@@ -65,6 +65,9 @@ func Run(args []string, stdout, stderr io.Writer) error {
 
 	switch args[0] {
 	case "summon":
+		if len(args) == 1 {
+			return reconcileSelection(app, cwd, "summon", stdout, stderr)
+		}
 		refs, err := resolveCommandRefs(app, cwd, "summon", args, stdout, stderr)
 		if err != nil {
 			return err
@@ -76,6 +79,9 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		}
 		return nil
 	case "summon-untrusted":
+		if len(args) == 1 {
+			return reconcileSelection(app, cwd, "summon-untrusted", stdout, stderr)
+		}
 		refs, err := resolveCommandRefs(app, cwd, "summon-untrusted", args, stdout, stderr)
 		if err != nil {
 			return err
@@ -111,4 +117,58 @@ func resolveCommandRefs(app *wsfold.App, cwd string, command string, args []stri
 	default:
 		return nil, fmt.Errorf("%s accepts zero or one repo ref, got %d arguments", command, len(args)-1)
 	}
+}
+
+func reconcileSelection(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) error {
+	candidates, err := app.Complete(cwd, command, "")
+	if err != nil {
+		return err
+	}
+
+	selected, err := runPicker(app, cwd, command, stdout, stderr)
+	if err != nil {
+		return err
+	}
+
+	adds, removes := planSelectionChanges(candidates, selected)
+	for _, ref := range removes {
+		if err := app.Dismiss(cwd, ref); err != nil {
+			return err
+		}
+	}
+
+	for _, ref := range adds {
+		switch command {
+		case "summon":
+			if err := app.Summon(cwd, ref); err != nil {
+				return err
+			}
+		case "summon-untrusted":
+			if err := app.SummonUntrusted(cwd, ref); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported reconcile command %q", command)
+		}
+	}
+
+	return nil
+}
+
+func planSelectionChanges(candidates []wsfold.CompletionCandidate, selected []string) (adds []string, removes []string) {
+	selectedSet := make(map[string]bool, len(selected))
+	for _, ref := range selected {
+		selectedSet[ref] = true
+	}
+
+	for _, candidate := range candidates {
+		switch {
+		case candidate.Attached && !selectedSet[candidate.Value]:
+			removes = append(removes, candidate.Value)
+		case !candidate.Attached && selectedSet[candidate.Value]:
+			adds = append(adds, candidate.Value)
+		}
+	}
+
+	return adds, removes
 }

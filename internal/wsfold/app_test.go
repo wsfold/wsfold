@@ -202,6 +202,44 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 	}
 }
 
+func TestDismissSupportsLocalFolderAlias(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	repoPath := filepath.Join(h.TrustedRoot, "math-app")
+	h.InitRepo(repoPath)
+	h.RunGit(repoPath, "remote", "add", "origin", "git@github.com:mikhail-yaskou/math.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Summon(h.Workspace, "math-app"); err != nil {
+		t.Fatalf("Summon returned error for local folder alias: %v", err)
+	}
+
+	link := filepath.Join(h.Workspace, "_prj", "math")
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("expected trusted symlink before dismiss: %v", err)
+	}
+
+	if err := app.Dismiss(h.Workspace, "math-app"); err != nil {
+		t.Fatalf("Dismiss returned error for local folder alias: %v", err)
+	}
+
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("expected trusted symlink removal, got %v", err)
+	}
+
+	manifest, err := loadManifest(h.Workspace)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	if len(manifest.Trusted) != 0 {
+		t.Fatalf("expected trusted entry removal, got %+v", manifest.Trusted)
+	}
+}
+
 func TestDismissAfterManualSymlinkRemoval(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)

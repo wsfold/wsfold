@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -125,6 +126,7 @@ func resolveManifestEntry(manifest Manifest, ref string) (Entry, bool, error) {
 
 	var exact []Entry
 	var short []Entry
+	var local []Entry
 	shortName := repoNameFromRef(ref)
 	for _, entry := range all {
 		if normalizeRepoRef(entry.RepoRef) == ref {
@@ -132,6 +134,9 @@ func resolveManifestEntry(manifest Manifest, ref string) (Entry, bool, error) {
 		}
 		if repoNameFromRef(entry.RepoRef) == shortName {
 			short = append(short, entry)
+		}
+		if strings.EqualFold(completionFolderName(entry.CheckoutPath), ref) {
+			local = append(local, entry)
 		}
 	}
 
@@ -145,6 +150,12 @@ func resolveManifestEntry(manifest Manifest, ref string) (Entry, bool, error) {
 		return short[0], true, nil
 	}
 	if len(short) > 1 {
+		return Entry{}, false, fmt.Errorf("repo ref %q is ambiguous in manifest", ref)
+	}
+	if len(local) == 1 {
+		return local[0], true, nil
+	}
+	if len(local) > 1 {
 		return Entry{}, false, fmt.Errorf("repo ref %q is ambiguous in manifest", ref)
 	}
 

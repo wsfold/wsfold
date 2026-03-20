@@ -52,10 +52,6 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return writeDynamicCompletions(cwd, args, stdout)
 	}
 
-	if len(args) != 2 {
-		return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
-	}
-
 	app := wsfold.NewApp()
 	app.Stdout = stdout
 	app.Stderr = stderr
@@ -67,21 +63,16 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return app.Init(cwd)
 	}
 
+	if len(args) != 2 {
+		return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
+	}
+
 	switch args[0] {
 	case "summon":
-		if len(args) != 2 {
-			return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
-		}
 		return app.Summon(cwd, args[1])
 	case "summon-untrusted":
-		if len(args) != 2 {
-			return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
-		}
 		return app.SummonUntrusted(cwd, args[1])
 	case "dismiss":
-		if len(args) != 2 {
-			return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
-		}
 		return app.Dismiss(cwd, args[1])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])

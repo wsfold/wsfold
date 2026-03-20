@@ -8,7 +8,11 @@ import (
 	"github.com/openclaw/wsfold/internal/wsfold"
 )
 
-const zshCompletionScript = `#compdef wsfold
+const zshCompletionScript = `
+autoload -Uz compinit 2>/dev/null || true
+if ! typeset -f compdef >/dev/null 2>&1; then
+  compinit >/dev/null 2>&1
+fi
 
 _wsfold() {
   local context state line
@@ -63,7 +67,7 @@ _wsfold() {
   esac
 }
 
-_wsfold "$@"
+compdef _wsfold wsfold
 `
 
 func writeZshCompletion(w io.Writer) error {

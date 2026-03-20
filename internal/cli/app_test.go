@@ -96,39 +96,39 @@ func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 	t.Cleanup(func() { runPicker = original })
 
 	called := false
-	runPicker = func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) (string, error) {
+	runPicker = func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error) {
 		called = true
 		if command != "summon" {
 			t.Fatalf("unexpected picker command: %s", command)
 		}
-		return "picked-repo", nil
+		return []string{"picked-repo", "picked-repo-2"}, nil
 	}
 
-	ref, err := resolveCommandRef(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
+	refs, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("resolveCommandRef returned error: %v", err)
+		t.Fatalf("resolveCommandRefs returned error: %v", err)
 	}
 	if !called {
 		t.Fatal("expected picker to be called")
 	}
-	if ref != "picked-repo" {
-		t.Fatalf("unexpected picker result: %q", ref)
+	if len(refs) != 2 || refs[0] != "picked-repo" || refs[1] != "picked-repo-2" {
+		t.Fatalf("unexpected picker result: %#v", refs)
 	}
 }
 
-func TestResolveCommandRefAllowsExplicitRepoRef(t *testing.T) {
-	ref, err := resolveCommandRef(wsfold.NewApp(), "/tmp/workspace", "dismiss", []string{"dismiss", "math-app"}, &bytes.Buffer{}, &bytes.Buffer{})
+func TestResolveCommandRefsAllowsExplicitRepoRef(t *testing.T) {
+	refs, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "dismiss", []string{"dismiss", "math-app"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err != nil {
-		t.Fatalf("resolveCommandRef returned error: %v", err)
+		t.Fatalf("resolveCommandRefs returned error: %v", err)
 	}
-	if ref != "math-app" {
-		t.Fatalf("unexpected explicit repo ref: %q", ref)
+	if len(refs) != 1 || refs[0] != "math-app" {
+		t.Fatalf("unexpected explicit repo refs: %#v", refs)
 	}
 }
 
-func TestResolveCommandRefRejectsExtraArgs(t *testing.T) {
-	_, err := resolveCommandRef(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{})
+func TestResolveCommandRefsRejectsExtraArgs(t *testing.T) {
+	_, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "summon accepts zero or one repo ref") {
-		t.Fatalf("unexpected resolveCommandRef error: %v", err)
+		t.Fatalf("unexpected resolveCommandRefs error: %v", err)
 	}
 }

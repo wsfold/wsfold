@@ -16,17 +16,17 @@ import (
 
 var errPickerCancelled = errors.New("selection cancelled")
 
-type pickerFunc func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) (string, error)
+type pickerFunc func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error)
 
 var runPicker pickerFunc = runBubbleTeaPicker
 
-func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) (string, error) {
+func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error) {
 	candidates, err := app.Complete(cwd, command, "")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if len(candidates) == 0 {
-		return "", fmt.Errorf("no candidates available for %s", command)
+		return nil, fmt.Errorf("no candidates available for %s", command)
 	}
 
 	model := newPickerModel(command, candidates)
@@ -38,20 +38,21 @@ func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.W
 	)
 	finalModel, err := program.Run()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	result, ok := finalModel.(pickerModel)
 	if !ok {
-		return "", fmt.Errorf("unexpected picker model type %T", finalModel)
+		return nil, fmt.Errorf("unexpected picker model type %T", finalModel)
 	}
 	if result.err != nil {
-		return "", result.err
+		return nil, result.err
 	}
-	if result.selected == nil {
-		return "", fmt.Errorf("no selection made")
+	selected := result.selectedValues()
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("no selection made")
 	}
-	return result.selected.Value, nil
+	return selected, nil
 }
 
 type pickerItem struct {
@@ -65,7 +66,7 @@ type pickerModel struct {
 	items    []pickerItem
 	filtered []pickerItem
 	cursor   int
-	selected *wsfold.CompletionCandidate
+	selected map[string]bool
 	err      error
 }
 
@@ -86,9 +87,10 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 	}
 
 	model := pickerModel{
-		command: command,
-		input:   input,
-		items:   items,
+		command:  command,
+		input:    input,
+		items:    items,
+		selected: map[string]bool{},
 	}
 	model.refresh()
 	return model
@@ -120,12 +122,27 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 			return m, nil
+		case " ":
+			if len(m.filtered) == 0 {
+				return m, nil
+			}
+			current := m.filtered[m.cursor].candidate.Value
+			if m.selected[current] {
+				delete(m.selected, current)
+			} else {
+				m.selected[current] = true
+			}
+			return m, nil
 		case "enter":
 			if len(m.filtered) == 0 {
 				return m, nil
 			}
-			selected := m.filtered[m.cursor].candidate
-			m.selected = &selected
+			current := m.filtered[m.cursor].candidate.Value
+			if len(m.selected) == 0 {
+				m.selected[current] = true
+			} else if !m.selected[current] {
+				m.selected[current] = true
+			}
 			return m, tea.Quit
 		}
 	}
@@ -192,7 +209,11 @@ func (m pickerModel) View() string {
 			if item.Attached {
 				marker = markerStyle.Render("✓")
 			}
-			render := fmt.Sprintf("%s %s", marker, item.Value)
+			selectMarker := emptyMarkerStyle.Render("○")
+			if m.selected[item.Value] {
+				selectMarker = markerStyle.Render("●")
+			}
+			render := fmt.Sprintf("%s %s %s", selectMarker, marker, item.Value)
 			if item.Description != "" {
 				render = fmt.Sprintf("%s  %s", render, descStyle.Render(item.Description))
 			}
@@ -204,8 +225,22 @@ func (m pickerModel) View() string {
 		}
 	}
 
-	lines = append(lines, "", hintStyle.Render("Enter select, Esc cancel, type to fuzzy filter"))
+	lines = append(lines, "", hintStyle.Render("Space toggle, Enter confirm, Esc cancel, type to fuzzy filter"))
 	return strings.Join(lines, "\n")
+}
+
+func (m pickerModel) selectedValues() []string {
+	if len(m.selected) == 0 {
+		return nil
+	}
+
+	values := make([]string, 0, len(m.selected))
+	for _, item := range m.items {
+		if m.selected[item.candidate.Value] {
+			values = append(values, item.candidate.Value)
+		}
+	}
+	return values
 }
 
 func pickerTitle(command string) string {

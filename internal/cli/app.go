@@ -65,35 +65,50 @@ func Run(args []string, stdout, stderr io.Writer) error {
 
 	switch args[0] {
 	case "summon":
-		ref, err := resolveCommandRef(app, cwd, "summon", args, stdout, stderr)
+		refs, err := resolveCommandRefs(app, cwd, "summon", args, stdout, stderr)
 		if err != nil {
 			return err
 		}
-		return app.Summon(cwd, ref)
+		for _, ref := range refs {
+			if err := app.Summon(cwd, ref); err != nil {
+				return err
+			}
+		}
+		return nil
 	case "summon-untrusted":
-		ref, err := resolveCommandRef(app, cwd, "summon-untrusted", args, stdout, stderr)
+		refs, err := resolveCommandRefs(app, cwd, "summon-untrusted", args, stdout, stderr)
 		if err != nil {
 			return err
 		}
-		return app.SummonUntrusted(cwd, ref)
+		for _, ref := range refs {
+			if err := app.SummonUntrusted(cwd, ref); err != nil {
+				return err
+			}
+		}
+		return nil
 	case "dismiss":
-		ref, err := resolveCommandRef(app, cwd, "dismiss", args, stdout, stderr)
+		refs, err := resolveCommandRefs(app, cwd, "dismiss", args, stdout, stderr)
 		if err != nil {
 			return err
 		}
-		return app.Dismiss(cwd, ref)
+		for _, ref := range refs {
+			if err := app.Dismiss(cwd, ref); err != nil {
+				return err
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
 }
 
-func resolveCommandRef(app *wsfold.App, cwd string, command string, args []string, stdout io.Writer, stderr io.Writer) (string, error) {
+func resolveCommandRefs(app *wsfold.App, cwd string, command string, args []string, stdout io.Writer, stderr io.Writer) ([]string, error) {
 	switch len(args) {
 	case 1:
 		return runPicker(app, cwd, command, stdout, stderr)
 	case 2:
-		return args[1], nil
+		return []string{args[1]}, nil
 	default:
-		return "", fmt.Errorf("%s accepts zero or one repo ref, got %d arguments", command, len(args)-1)
+		return nil, fmt.Errorf("%s accepts zero or one repo ref, got %d arguments", command, len(args)-1)
 	}
 }

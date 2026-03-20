@@ -1,0 +1,2 @@
+# wsfold
+WsFold - Workspace Manager

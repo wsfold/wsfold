@@ -38,27 +38,32 @@ func (r Runner) Git(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-func ensurePrimaryWorkspaceRoot(runner Runner, cwd string) (string, error) {
+func currentWorkspaceRoot(cwd string) (string, error) {
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return "", fmt.Errorf("resolve current directory: %w", err)
+	}
+	return abs, nil
+}
+
+func resolveWorkspaceRoot(cwd string) (string, error) {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		return "", fmt.Errorf("resolve current directory: %w", err)
 	}
 
-	root, err := runner.Git(abs, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return "", fmt.Errorf("current directory must be a git repository or worktree root: %w", err)
-	}
+	dir := abs
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".wsfold")); err == nil {
+			return dir, nil
+		}
 
-	root, err = filepath.Abs(root)
-	if err != nil {
-		return "", fmt.Errorf("resolve git root: %w", err)
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("no .wsfold workspace found from %s upward; run `wsfold init` first", abs)
+		}
+		dir = parent
 	}
-
-	if filepath.Clean(root) != filepath.Clean(abs) {
-		return "", fmt.Errorf("current directory must be the repository or worktree root: %s", abs)
-	}
-
-	return abs, nil
 }
 
 func repoOrigin(runner Runner, path string) string {

@@ -59,6 +59,15 @@ func TestRunVersion(t *testing.T) {
 	}
 }
 
+func TestRunInitRejectsExtraArgs(t *testing.T) {
+	t.Parallel()
+
+	err := Run([]string{"init", "extra"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "init does not accept positional arguments") {
+		t.Fatalf("unexpected init error: %v", err)
+	}
+}
+
 func TestRunCompletionZsh(t *testing.T) {
 	t.Parallel()
 

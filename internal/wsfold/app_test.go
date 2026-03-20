@@ -12,6 +12,7 @@ import (
 func TestSummonExistingTrustedRepo(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
+	initWorkspace(t, h)
 
 	repoPath := filepath.Join(h.TrustedRoot, "acme", "service")
 	if err := os.MkdirAll(filepath.Dir(repoPath), 0o755); err != nil {
@@ -70,6 +71,7 @@ func TestSummonExistingTrustedRepo(t *testing.T) {
 func TestSummonMissingTrustedRepoClones(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
+	initWorkspace(t, h)
 	h.CreateGitHubRemote("acme", "service")
 
 	app := NewApp()
@@ -88,6 +90,7 @@ func TestSummonMissingTrustedRepoClones(t *testing.T) {
 func TestSummonSupportsLocalFolderAlias(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
+	initWorkspace(t, h)
 
 	repoPath := filepath.Join(h.TrustedRoot, "math-app")
 	h.InitRepo(repoPath)
@@ -114,6 +117,7 @@ func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 	t.Run("existing external repo", func(t *testing.T) {
 		h := testutil.NewHarness(t)
 		setEnv(t, h)
+		initWorkspace(t, h)
 
 		repoPath := filepath.Join(h.ExternalRoot, "legacy-tool")
 		h.InitRepo(repoPath)
@@ -134,6 +138,7 @@ func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 	t.Run("missing external repo clones", func(t *testing.T) {
 		h := testutil.NewHarness(t)
 		setEnv(t, h)
+		initWorkspace(t, h)
 		h.CreateGitHubRemote("other", "legacy-tool")
 
 		app := NewApp()
@@ -156,6 +161,7 @@ func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
+	initWorkspace(t, h)
 
 	h.CreateGitHubRemote("acme", "service")
 	h.CreateGitHubRemote("other", "legacy-tool")
@@ -199,6 +205,7 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 func TestDismissAfterManualSymlinkRemoval(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
+	initWorkspace(t, h)
 	h.CreateGitHubRemote("acme", "service")
 
 	app := NewApp()
@@ -221,6 +228,7 @@ func TestDismissAfterManualSymlinkRemoval(t *testing.T) {
 func TestEndToEndSmokeScenario(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
+	initWorkspace(t, h)
 	h.CreateGitHubRemote("acme", "service")
 	h.CreateGitHubRemote("other", "legacy-tool")
 
@@ -280,6 +288,58 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 	}
 	if strings.Contains(string(workspaceBytes), trustedClone) {
 		t.Fatalf("workspace should not include dismissed trusted root:\n%s", string(workspaceBytes))
+	}
+}
+
+func TestInitCreatesManifestAndWorkspace(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+
+	app := NewApp()
+	if err := app.Init(h.Workspace); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+
+	if _, err := os.Stat(manifestPath(h.Workspace)); err != nil {
+		t.Fatalf("expected manifest after init: %v", err)
+	}
+	workspaceFile := filepath.Join(h.Workspace, filepath.Base(h.Workspace)+".code-workspace")
+	if _, err := os.Stat(workspaceFile); err != nil {
+		t.Fatalf("expected workspace file after init: %v", err)
+	}
+	workspaceBytes, err := os.ReadFile(workspaceFile)
+	if err != nil {
+		t.Fatalf("read workspace file: %v", err)
+	}
+	if !strings.Contains(string(workspaceBytes), `"name": "`+filepath.Base(h.Workspace)+`"`) || !strings.Contains(string(workspaceBytes), `"path": "."`) {
+		t.Fatalf("unexpected initialized workspace file:\n%s", string(workspaceBytes))
+	}
+}
+
+func TestResolveWorkspaceRootFindsNearestManifestUpTree(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	nested := filepath.Join(h.Workspace, "sub", "dir")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatalf("mkdir nested dir: %v", err)
+	}
+
+	root, err := resolveWorkspaceRoot(nested)
+	if err != nil {
+		t.Fatalf("resolveWorkspaceRoot returned error: %v", err)
+	}
+	if root != h.Workspace {
+		t.Fatalf("unexpected resolved workspace root: %s", root)
+	}
+}
+
+func initWorkspace(t *testing.T, h *testutil.Harness) {
+	t.Helper()
+	app := NewApp()
+	if err := app.Init(h.Workspace); err != nil {
+		t.Fatalf("Init returned error: %v", err)
 	}
 }
 

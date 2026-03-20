@@ -98,7 +98,7 @@ func discoverCompletionRepos(root string, trustClass TrustClass, runner Runner) 
 }
 
 func (a *App) completeManifest(cwd string, prefix string) ([]CompletionCandidate, error) {
-	primaryRoot, err := resolveWorkspaceRoot(a.Runner, cwd)
+	primaryRoot, err := resolveWorkspaceRoot(cwd)
 	if err != nil {
 		return nil, err
 	}
@@ -140,14 +140,6 @@ func sortCandidates(candidates []CompletionCandidate) {
 		}
 		return candidates[i].Description < candidates[j].Description
 	})
-}
-
-func resolveWorkspaceRoot(runner Runner, cwd string) (string, error) {
-	root, err := runner.Git(cwd, "rev-parse", "--show-toplevel")
-	if err != nil {
-		return "", err
-	}
-	return filepath.Clean(root), nil
 }
 
 func preferredCompletionValues(repos []Repo) map[string]string {

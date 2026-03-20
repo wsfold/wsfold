@@ -34,6 +34,7 @@ _wsfold() {
 
   local -a subcommands
   subcommands=(
+    'init:initialize the current directory as a workspace'
     'summon:attach a trusted repository'
     'summon-untrusted:add an external repository as a workspace root'
     'dismiss:remove a repository from the current composition'
@@ -82,7 +83,7 @@ _wsfold() {
   esac
 }
 
-compdef _wsfold wsfold ./dist/wsfold
+compdef _wsfold wsfold ./dist/wsfold ./wsfold
 `
 
 func writeZshCompletion(w io.Writer) error {

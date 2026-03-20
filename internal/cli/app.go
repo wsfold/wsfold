@@ -12,6 +12,7 @@ import (
 const helpText = `wsfold composes trusted and external repositories around the current workspace.
 
 Usage:
+  wsfold init
   wsfold summon <repo-ref>
   wsfold summon-untrusted <repo-ref>
   wsfold dismiss <repo-ref>
@@ -19,6 +20,7 @@ Usage:
   wsfold completion zsh
 
 Commands:
+  init              initialize the current directory as a wsfold workspace
   summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj} and refresh the workspace
   summon-untrusted  add an external repository as a workspace root only
   dismiss           remove a repository from the current composition
@@ -58,12 +60,28 @@ func Run(args []string, stdout, stderr io.Writer) error {
 	app.Stdout = stdout
 	app.Stderr = stderr
 
+	if args[0] == "init" {
+		if len(args) != 1 {
+			return fmt.Errorf("init does not accept positional arguments")
+		}
+		return app.Init(cwd)
+	}
+
 	switch args[0] {
 	case "summon":
+		if len(args) != 2 {
+			return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
+		}
 		return app.Summon(cwd, args[1])
 	case "summon-untrusted":
+		if len(args) != 2 {
+			return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
+		}
 		return app.SummonUntrusted(cwd, args[1])
 	case "dismiss":
+		if len(args) != 2 {
+			return fmt.Errorf("expected a command and repo ref, got %d arguments", len(args))
+		}
 		return app.Dismiss(cwd, args[1])
 	default:
 		return fmt.Errorf("unknown command %q", args[0])

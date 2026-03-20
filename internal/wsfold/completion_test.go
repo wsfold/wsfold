@@ -44,6 +44,7 @@ func TestCompleteTrustedAndExternalRepos(t *testing.T) {
 func TestCompleteDismissFromManifest(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setCompletionEnv(t, h)
+	initWorkspace(t, h)
 	h.CreateGitHubRemote("acme", "service")
 	h.CreateGitHubRemote("other", "legacy-tool")
 

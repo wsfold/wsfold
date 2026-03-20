@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 )
 
-const workspaceFileName = "wsfold.code-workspace"
-
 type workspaceFile struct {
 	Folders  []workspaceFolder `json:"folders"`
 	Settings map[string]any    `json:"settings"`
@@ -20,7 +18,7 @@ type workspaceFolder struct {
 }
 
 func workspacePath(primaryRoot string) string {
-	return filepath.Join(primaryRoot, workspaceFileName)
+	return filepath.Join(primaryRoot, filepath.Base(primaryRoot)+".code-workspace")
 }
 
 func writeWorkspace(primaryRoot string, manifest Manifest, projectsDirName string) error {

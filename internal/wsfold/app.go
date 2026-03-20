@@ -29,13 +29,42 @@ func (a *App) SummonUntrusted(cwd string, ref string) error {
 	return a.summon(cwd, ref, TrustClassExternal)
 }
 
+func (a *App) Init(cwd string) error {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	primaryRoot, err := currentWorkspaceRoot(cwd)
+	if err != nil {
+		return err
+	}
+
+	manifest := Manifest{
+		Version:     manifestVersion,
+		PrimaryRoot: primaryRoot,
+		Trusted:     []Entry{},
+		External:    []Entry{},
+	}
+
+	if err := saveManifest(primaryRoot, manifest); err != nil {
+		return err
+	}
+	if err := writeWorkspace(primaryRoot, manifest, cfg.ProjectsDirName); err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintf(a.Stdout, "initialized %s\n", primaryRoot)
+	return nil
+}
+
 func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 	cfg, err := LoadConfig()
 	if err != nil {
 		return err
 	}
 
-	primaryRoot, err := ensurePrimaryWorkspaceRoot(a.Runner, cwd)
+	primaryRoot, err := resolveWorkspaceRoot(cwd)
 	if err != nil {
 		return err
 	}
@@ -87,7 +116,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 	}
 	_ = cfg
 
-	primaryRoot, err := ensurePrimaryWorkspaceRoot(a.Runner, cwd)
+	primaryRoot, err := resolveWorkspaceRoot(cwd)
 	if err != nil {
 		return err
 	}

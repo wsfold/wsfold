@@ -49,6 +49,11 @@ func TestRenderWorkspaceMatchesGoldenAndIsDeterministic(t *testing.T) {
 	}
 	expected := strings.ReplaceAll(string(want), "{{PRIMARY_ROOT}}", root)
 	expected = strings.ReplaceAll(expected, "{{PRIMARY_NAME}}", filepath.Base(root))
+	externalRelativePath, err := filepath.Rel(root, "/external/legacy/tool")
+	if err != nil {
+		t.Fatalf("compute relative external path: %v", err)
+	}
+	expected = strings.ReplaceAll(expected, "{{EXTERNAL_RELATIVE_PATH}}", filepath.ToSlash(externalRelativePath))
 	if string(first) != expected {
 		t.Fatalf("workspace mismatch\nwant:\n%s\ngot:\n%s", expected, string(first))
 	}

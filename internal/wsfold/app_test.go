@@ -48,8 +48,11 @@ func TestSummonExistingTrustedRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read workspace file: %v", err)
 	}
-	if !strings.Contains(string(workspaceBytes), repoPath) {
-		t.Fatalf("workspace did not include trusted root:\n%s", string(workspaceBytes))
+	if !strings.Contains(string(workspaceBytes), `"_prj/service"`) {
+		t.Fatalf("workspace did not include trusted symlink root:\n%s", string(workspaceBytes))
+	}
+	if strings.Contains(string(workspaceBytes), repoPath) {
+		t.Fatalf("workspace should not point trusted root at original checkout path:\n%s", string(workspaceBytes))
 	}
 
 	before := string(manifestBytes) + string(workspaceBytes)
@@ -272,7 +275,7 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read workspace file: %v", err)
 	}
-	if !strings.Contains(string(workspaceBytes), externalClone) {
+	if !strings.Contains(string(workspaceBytes), `"../external/other/legacy-tool"`) {
 		t.Fatalf("workspace should still include external root:\n%s", string(workspaceBytes))
 	}
 	if strings.Contains(string(workspaceBytes), trustedClone) {

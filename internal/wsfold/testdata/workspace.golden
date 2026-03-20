@@ -2,15 +2,15 @@
   "folders": [
     {
       "name": "{{PRIMARY_NAME}}",
-      "path": "{{PRIMARY_ROOT}}"
+      "path": "."
     },
     {
       "name": "service",
-      "path": "/trusted/acme/service"
+      "path": "_prj/service"
     },
     {
       "name": "tool",
-      "path": "/external/legacy/tool"
+      "path": "{{EXTERNAL_RELATIVE_PATH}}"
     }
   ],
   "settings": {

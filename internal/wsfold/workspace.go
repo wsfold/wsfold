@@ -33,18 +33,30 @@ func writeWorkspace(primaryRoot string, manifest Manifest, projectsDirName strin
 
 func renderWorkspace(manifest Manifest, projectsDirName string) ([]byte, error) {
 	folders := []workspaceFolder{
-		{Name: filepath.Base(manifest.PrimaryRoot), Path: manifest.PrimaryRoot},
+		{Name: filepath.Base(manifest.PrimaryRoot), Path: "."},
 	}
 	for _, entry := range manifest.Trusted {
+		path := entry.MountPath
+		if path == "" {
+			path = entry.CheckoutPath
+		}
+		relativePath, err := workspaceRelativePath(manifest.PrimaryRoot, path)
+		if err != nil {
+			return nil, err
+		}
 		folders = append(folders, workspaceFolder{
 			Name: repoNameFromRef(entry.RepoRef),
-			Path: entry.CheckoutPath,
+			Path: relativePath,
 		})
 	}
 	for _, entry := range manifest.External {
+		relativePath, err := workspaceRelativePath(manifest.PrimaryRoot, entry.CheckoutPath)
+		if err != nil {
+			return nil, err
+		}
 		folders = append(folders, workspaceFolder{
 			Name: repoNameFromRef(entry.RepoRef),
-			Path: entry.CheckoutPath,
+			Path: relativePath,
 		})
 	}
 
@@ -68,4 +80,15 @@ func renderWorkspace(manifest Manifest, projectsDirName string) ([]byte, error) 
 		return nil, fmt.Errorf("marshal workspace: %w", err)
 	}
 	return append(data, '\n'), nil
+}
+
+func workspaceRelativePath(primaryRoot string, targetPath string) (string, error) {
+	relativePath, err := filepath.Rel(primaryRoot, targetPath)
+	if err != nil {
+		return "", fmt.Errorf("compute relative workspace path for %s: %w", targetPath, err)
+	}
+	if relativePath == "." {
+		return ".", nil
+	}
+	return filepath.ToSlash(relativePath), nil
 }

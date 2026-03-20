@@ -11,14 +11,15 @@ import (
 type CompletionCandidate struct {
 	Value       string
 	Description string
+	Attached    bool
 }
 
 func (a *App) Complete(cwd string, command string, prefix string) ([]CompletionCandidate, error) {
 	switch command {
 	case "summon":
-		return a.completeRepoIndex(prefix, TrustClassTrusted)
+		return a.completeRepoIndex(cwd, prefix, TrustClassTrusted)
 	case "summon-untrusted":
-		return a.completeRepoIndex(prefix, TrustClassExternal)
+		return a.completeRepoIndex(cwd, prefix, TrustClassExternal)
 	case "dismiss":
 		return a.completeManifest(cwd, prefix)
 	default:
@@ -26,7 +27,7 @@ func (a *App) Complete(cwd string, command string, prefix string) ([]CompletionC
 	}
 }
 
-func (a *App) completeRepoIndex(prefix string, requested TrustClass) ([]CompletionCandidate, error) {
+func (a *App) completeRepoIndex(cwd string, prefix string, requested TrustClass) ([]CompletionCandidate, error) {
 	cfg, err := LoadConfig()
 	if err != nil {
 		return nil, err
@@ -42,6 +43,7 @@ func (a *App) completeRepoIndex(prefix string, requested TrustClass) ([]Completi
 		return nil, err
 	}
 
+	attached := attachedCheckoutPaths(cwd)
 	valueByPath := preferredCompletionValues(repos)
 	candidates := make([]CompletionCandidate, 0, len(repos))
 	seen := map[string]struct{}{}
@@ -59,6 +61,7 @@ func (a *App) completeRepoIndex(prefix string, requested TrustClass) ([]Completi
 		candidates = append(candidates, CompletionCandidate{
 			Value:       value,
 			Description: description,
+			Attached:    attached[repo.CheckoutPath],
 		})
 	}
 
@@ -126,6 +129,7 @@ func (a *App) completeManifest(cwd string, prefix string) ([]CompletionCandidate
 		candidates = append(candidates, CompletionCandidate{
 			Value:       value,
 			Description: description,
+			Attached:    true,
 		})
 	}
 
@@ -191,4 +195,27 @@ func completionDescription(source string, checkoutPath string) string {
 		return trimmed
 	}
 	return ""
+}
+
+func attachedCheckoutPaths(cwd string) map[string]bool {
+	attached := map[string]bool{}
+
+	primaryRoot, err := resolveWorkspaceRoot(cwd)
+	if err != nil {
+		return attached
+	}
+
+	manifest, err := loadManifest(primaryRoot)
+	if err != nil {
+		return attached
+	}
+
+	for _, entry := range manifest.Trusted {
+		attached[entry.CheckoutPath] = true
+	}
+	for _, entry := range manifest.External {
+		attached[entry.CheckoutPath] = true
+	}
+
+	return attached
 }

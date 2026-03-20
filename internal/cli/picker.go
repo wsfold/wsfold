@@ -172,6 +172,8 @@ func (m pickerModel) View() string {
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	markerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	emptyMarkerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 
 	lines := []string{
 		titleStyle.Render(pickerTitle(m.command)),
@@ -186,9 +188,13 @@ func (m pickerModel) View() string {
 		for i := start; i < end; i++ {
 			item := m.filtered[i].candidate
 			prefix := "  "
-			render := item.Value
+			marker := emptyMarkerStyle.Render(" ")
+			if item.Attached {
+				marker = markerStyle.Render("✓")
+			}
+			render := fmt.Sprintf("%s %s", marker, item.Value)
 			if item.Description != "" {
-				render = fmt.Sprintf("%s  %s", item.Value, descStyle.Render(item.Description))
+				render = fmt.Sprintf("%s  %s", render, descStyle.Render(item.Description))
 			}
 			if i == m.cursor {
 				prefix = "> "

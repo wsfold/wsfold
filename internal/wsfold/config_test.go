@@ -17,6 +17,27 @@ func TestLoadConfigMissingEnv(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAllowsMissingTrustedGitHubOrgs(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := loadConfig(func(key string) (string, bool) {
+		switch key {
+		case envTrustedDir:
+			return "/tmp/trusted", true
+		case envExternalDir:
+			return "/tmp/external", true
+		default:
+			return "", false
+		}
+	})
+	if err != nil {
+		t.Fatalf("loadConfig returned error: %v", err)
+	}
+	if len(cfg.TrustedGitHubOrgs) != 0 {
+		t.Fatalf("expected empty trusted orgs by default, got %#v", cfg.TrustedGitHubOrgs)
+	}
+}
+
 func TestParseTrustedGitHubOrgsRejectsEmptyEntries(t *testing.T) {
 	t.Parallel()
 

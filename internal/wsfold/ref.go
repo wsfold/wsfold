@@ -33,10 +33,6 @@ func repoNameFromRef(ref string) string {
 }
 
 func parseGitHubSlug(ref string) (owner string, repo string, ok bool) {
-	if owner, repo, ok := splitSlug(ref); ok {
-		return owner, repo, true
-	}
-
 	for _, pattern := range []*regexp.Regexp{githubHTTPSPattern, githubSSHPattern} {
 		matches := pattern.FindStringSubmatch(strings.TrimSpace(ref))
 		if len(matches) == 3 {
@@ -47,6 +43,10 @@ func parseGitHubSlug(ref string) (owner string, repo string, ok bool) {
 	matches := fileMirrorPattern.FindStringSubmatch(strings.TrimSpace(ref))
 	if len(matches) == 3 {
 		return strings.ToLower(matches[1]), strings.ToLower(strings.TrimSuffix(matches[2], ".git")), true
+	}
+
+	if owner, repo, ok := splitSlug(ref); ok {
+		return owner, repo, true
 	}
 
 	return "", "", false

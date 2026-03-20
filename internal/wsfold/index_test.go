@@ -55,6 +55,41 @@ func TestDiscoverRepositoriesFindsNestedAndFlatLayouts(t *testing.T) {
 	}
 }
 
+func TestDiscoverRepositoriesSkipsHiddenDirectories(t *testing.T) {
+	t.Parallel()
+
+	h := testutil.NewHarness(t)
+
+	visibleRepo := filepath.Join(h.TrustedRoot, "acme", "service")
+	if err := os.MkdirAll(filepath.Dir(visibleRepo), 0o755); err != nil {
+		t.Fatalf("mkdir visible repo parent: %v", err)
+	}
+	h.InitRepo(visibleRepo)
+
+	hiddenRepo := filepath.Join(h.TrustedRoot, ".cache", "ignored")
+	if err := os.MkdirAll(filepath.Dir(hiddenRepo), 0o755); err != nil {
+		t.Fatalf("mkdir hidden repo parent: %v", err)
+	}
+	h.InitRepo(hiddenRepo)
+
+	cfg := Config{
+		TrustedDir:  h.TrustedRoot,
+		ExternalDir: h.ExternalRoot,
+	}
+
+	index, err := DiscoverRepositories(cfg, Runner{})
+	if err != nil {
+		t.Fatalf("DiscoverRepositories returned error: %v", err)
+	}
+
+	if len(index.Repos) != 1 {
+		t.Fatalf("expected only visible repo to be indexed, got %#v", index.Repos)
+	}
+	if index.Repos[0].CheckoutPath != visibleRepo {
+		t.Fatalf("unexpected indexed repo: %#v", index.Repos[0])
+	}
+}
+
 func TestResolvePrefersRequestedTrustClassAndErrorsOnAmbiguity(t *testing.T) {
 	t.Parallel()
 
@@ -125,5 +160,17 @@ func TestFindOrCloneRepoRejectsTrustedClassificationForUntrustedCommand(t *testi
 	_, err = RepoIndex{}.Resolve("missing", TrustClassTrusted)
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected os.ErrNotExist, got %v", err)
+	}
+}
+
+func TestParseGitHubSlugPrefersSSHPatternOverGenericSplit(t *testing.T) {
+	t.Parallel()
+
+	owner, repo, ok := parseGitHubSlug("git@github.com:mikhail-yaskou/assistant.git")
+	if !ok {
+		t.Fatal("expected ssh github origin to parse")
+	}
+	if owner != "mikhail-yaskou" || repo != "assistant" {
+		t.Fatalf("unexpected parsed slug: %s/%s", owner, repo)
 	}
 }

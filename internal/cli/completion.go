@@ -14,12 +14,26 @@ if ! typeset -f compdef >/dev/null 2>&1; then
   compinit >/dev/null 2>&1
 fi
 
+_wsfold_executable() {
+  if [[ -n "${words[1]:-}" && -x "${words[1]}" ]]; then
+    printf '%s\n' "${words[1]}"
+    return
+  fi
+
+  if command -v wsfold >/dev/null 2>&1; then
+    printf '%s\n' "wsfold"
+    return
+  fi
+
+  printf '%s\n' "wsfold"
+}
+
 _wsfold() {
-  local context state line
+  local context state
   typeset -A opt_args
 
-  local -a commands
-  commands=(
+  local -a subcommands
+  subcommands=(
     'summon:attach a trusted repository'
     'summon-untrusted:add an external repository as a workspace root'
     'dismiss:remove a repository from the current composition'
@@ -34,21 +48,22 @@ _wsfold() {
 
   case $state in
     command)
-      _describe -t commands 'wsfold commands' commands
+      _describe -t commands 'wsfold commands' subcommands
       return
       ;;
     repo)
       local cmd="${words[2]}"
       local current="${PREFIX}"
+      local executable="$(_wsfold_executable)"
       local -a raw
       local -a described
-      local line value description
+      local candidate value description
 
-      raw=("${(@f)$(${words[1]} __complete "${cmd}" "${current}" 2>/dev/null)}")
-      for line in "${raw[@]}"; do
-        value="${line%%$'\t'*}"
-        if [[ "$line" == *$'\t'* ]]; then
-          description="${line#*$'\t'}"
+      raw=("${(@f)$(${executable} __complete "${cmd}" "${current}" 2>/dev/null)}")
+      for candidate in "${raw[@]}"; do
+        value="${candidate%%$'\t'*}"
+        if [[ "$candidate" == *$'\t'* ]]; then
+          description="${candidate#*$'\t'}"
           described+=("${value}:${description}")
         else
           described+=("${value}")
@@ -67,7 +82,7 @@ _wsfold() {
   esac
 }
 
-compdef _wsfold wsfold
+compdef _wsfold wsfold ./dist/wsfold
 `
 
 func writeZshCompletion(w io.Writer) error {
@@ -96,7 +111,7 @@ func writeDynamicCompletions(cwd string, args []string, stdout io.Writer) error 
 	app := wsfold.NewApp()
 	candidates, err := app.Complete(cwd, args[1], args[2])
 	if err != nil {
-		return nil
+		return err
 	}
 
 	for _, candidate := range candidates {

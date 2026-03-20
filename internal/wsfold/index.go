@@ -76,6 +76,10 @@ func discoverReposUnderRoot(root string, trustClass TrustClass, runner Runner) (
 			return nil
 		}
 
+		if d.IsDir() && path != root && strings.HasPrefix(name, ".") {
+			return filepath.SkipDir
+		}
+
 		if d.IsDir() && name == ".git" {
 			return filepath.SkipDir
 		}

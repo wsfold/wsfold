@@ -27,6 +27,8 @@ func LoadConfig() (Config, error) {
 }
 
 func loadConfig(lookupEnv func(string) (string, bool)) (Config, error) {
+	var err error
+
 	trustedDir, ok := lookupEnv(envTrustedDir)
 	if !ok || strings.TrimSpace(trustedDir) == "" {
 		return Config{}, fmt.Errorf("%s must be set", envTrustedDir)
@@ -37,14 +39,13 @@ func loadConfig(lookupEnv func(string) (string, bool)) (Config, error) {
 		return Config{}, fmt.Errorf("%s must be set", envExternalDir)
 	}
 
+	orgs := []string{}
 	orgsRaw, ok := lookupEnv(envTrustedGitHubOrgs)
-	if !ok {
-		return Config{}, fmt.Errorf("%s must be set", envTrustedGitHubOrgs)
-	}
-
-	orgs, err := parseTrustedGitHubOrgs(orgsRaw)
-	if err != nil {
-		return Config{}, err
+	if ok {
+		orgs, err = parseTrustedGitHubOrgs(orgsRaw)
+		if err != nil {
+			return Config{}, err
+		}
 	}
 
 	trustedDir, err = filepath.Abs(trustedDir)

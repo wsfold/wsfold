@@ -30,7 +30,12 @@ func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.W
 	}
 
 	model := newPickerModel(command, candidates)
-	program := tea.NewProgram(model, tea.WithInput(os.Stdin), tea.WithOutput(stdout))
+	program := tea.NewProgram(
+		model,
+		tea.WithInput(os.Stdin),
+		tea.WithOutput(stdout),
+		tea.WithAltScreen(),
+	)
 	finalModel, err := program.Run()
 	if err != nil {
 		return "", err

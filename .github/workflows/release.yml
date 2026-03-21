@@ -44,12 +44,20 @@ jobs:
             -f tag_name="${GITHUB_REF_NAME}" \
             > generated-release-notes.json
 
-          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq '.id')"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" > current-release.json
+
+          release_id="$(jq -r '.id' current-release.json)"
+
+          chmod +x ./scripts/merge-release-notes.py
+          ./scripts/merge-release-notes.py \
+            current-release.json \
+            generated-release-notes.json \
+            merged-release-notes.json
 
           gh api \
             --method PATCH \
             "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
-            --input generated-release-notes.json \
+            --input merged-release-notes.json \
             >/dev/null
 
       - name: Checkout Homebrew Tap

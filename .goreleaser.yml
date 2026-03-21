@@ -46,4 +46,30 @@ snapshot:
   version_template: "{{ .Version }}-SNAPSHOT"
 
 changelog:
-  disable: true
+  use: github
+  abbrev: -1
+  format: "- {{ .Message }}{{ if .Logins }} ({{ .Logins | englishJoin }}){{ end }}"
+  filters:
+    exclude:
+      - "^Merge "
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]\-]+\))?!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\([[:word:]\-]+\))?!?:.+$'
+      order: 1
+    - title: Refactors
+      regexp: '^.*?(refactor|perf)(\([[:word:]\-]+\))?!?:.+$'
+      order: 2
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]\-]+\))?!?:.+$'
+      order: 3
+    - title: Tests
+      regexp: '^.*?test(\([[:word:]\-]+\))?!?:.+$'
+      order: 4
+    - title: Build and CI
+      regexp: '^.*?(build|ci|chore)(\([[:word:]\-]+\))?!?:.+$'
+      order: 5
+    - title: Others
+      order: 999

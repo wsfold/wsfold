@@ -392,7 +392,7 @@ func (m pickerModel) View() string {
 	slugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 	lines := []string{
-		titleStyle.Render(pickerTitle(m.command)),
+		titleStyle.Render(m.title()),
 		m.input.View(),
 		"",
 	}
@@ -422,11 +422,6 @@ func (m pickerModel) View() string {
 		lines = append(lines, "", hintStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.filtered))))
 	}
 
-	modeStatus := "Mode: Single"
-	if m.multiSelect {
-		modeStatus = fmt.Sprintf("Mode: Multi | Selected: %d", len(m.selected))
-	}
-	lines = append(lines, "", hintStyle.Render(modeStatus))
 	lines = append(lines, "", hintStyle.Render(m.hintText()))
 	if strings.TrimSpace(m.status) != "" {
 		lines = append(lines, hintStyle.Render(m.status))
@@ -474,6 +469,14 @@ func pickerTitle(command string) string {
 	default:
 		return "Select repository"
 	}
+}
+
+func (m pickerModel) title() string {
+	mode := "Single mode"
+	if m.multiSelect {
+		mode = "Multi mode"
+	}
+	return fmt.Sprintf("%s [%s]", pickerTitle(m.command), mode)
 }
 
 func visibleRange(cursor int, total int, maxItems int) (int, int) {

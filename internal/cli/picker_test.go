@@ -97,7 +97,7 @@ func TestPickerModelRendersSourceMarkersAndStatus(t *testing.T) {
 	model.status = "remote index unavailable: gh is not installed"
 
 	view := model.View()
-	for _, expected := range []string{"service", "local", "acme/service", "worker", "remote", "Mode: Single", "gh is not installed"} {
+	for _, expected := range []string{"service", "local", "acme/service", "worker", "remote", "Choose a trusted repository to include in your workspace [Single mode]", "gh is not installed"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("expected picker view to contain %q, got:\n%s", expected, view)
 		}
@@ -171,8 +171,8 @@ func TestPickerModelPinsSelectedItemsWhileFilteringInMultiSelectMode(t *testing.
 		t.Fatalf("expected cursor to jump to first non-selected match below pinned selections, got %d", model.cursor)
 	}
 	view := stripANSI(model.View())
-	if !strings.Contains(view, "Mode: Multi | Selected: 2") {
-		t.Fatalf("expected multi-select status in footer, got:\n%s", view)
+	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Multi mode]") {
+		t.Fatalf("expected multi-select title badge, got:\n%s", view)
 	}
 }
 
@@ -450,8 +450,8 @@ func TestPickerModelUsesMultiSelectHintWhenSelectionsExist(t *testing.T) {
 	if !strings.Contains(view, "Space toggle, Enter apply, PgUp/PgDn (Fn+Up/Fn+Down) scroll") {
 		t.Fatalf("expected multi-select hint for preselected summon picker, got:\n%s", view)
 	}
-	if !strings.Contains(view, "Mode: Multi | Selected: 1") {
-		t.Fatalf("expected multi-select status for preselected summon picker, got:\n%s", view)
+	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Multi mode]") {
+		t.Fatalf("expected multi-select title badge for preselected summon picker, got:\n%s", view)
 	}
 }
 

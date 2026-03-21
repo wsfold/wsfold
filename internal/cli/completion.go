@@ -37,7 +37,7 @@ _wsfold() {
     'init:initialize the current directory as a workspace'
     'summon:attach a trusted repository'
     'reindex:refresh trusted remote cache'
-    'summon-untrusted:add an external repository as a workspace root'
+    'summon-external:add an external repository as a workspace root'
     'dismiss:remove a repository from the current composition'
     'version:print build version metadata'
     'completion:print shell completion setup'

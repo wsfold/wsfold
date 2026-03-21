@@ -126,7 +126,7 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 		multiSelect: false,
 		pinSelections: false,
 	}
-	if command == "summon" || command == "summon-untrusted" {
+	if command == "summon" || command == "summon-external" {
 		for _, candidate := range candidates {
 			if candidate.Attached {
 				model.selected[candidate.Value] = true
@@ -462,7 +462,7 @@ func pickerTitle(command string) string {
 	switch command {
 	case "summon":
 		return "Choose a trusted repository to include in your workspace"
-	case "summon-untrusted":
+	case "summon-external":
 		return "Select external repository"
 	case "dismiss":
 		return "Select repository to dismiss"

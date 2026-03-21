@@ -7,7 +7,7 @@ In v1 it supports:
 - `wsfold init` for initializing a workspace in the current directory
 - `wsfold summon [repo-ref]` for trusted repository attachment, with a remote-aware picker when no ref is provided
 - `wsfold reindex trusted` for refreshing the trusted GitHub remote cache
-- `wsfold summon-untrusted [repo-ref]` for external repository visibility without symlink embedding
+- `wsfold summon-external [repo-ref]` for external repository visibility without symlink embedding
 - `wsfold dismiss [repo-ref]` for removing a repo from the current composition
 - deterministic `.wsfold/manifest.yaml` state
 - deterministic `<workspace-dirname>.code-workspace` generation for VS Code multi-root workspaces
@@ -25,7 +25,7 @@ After that, run commands from anywhere inside that workspace tree:
 ```bash
 wsfold summon acme/service
 wsfold reindex trusted
-wsfold summon-untrusted other/legacy-tool
+wsfold summon-external other/legacy-tool
 wsfold dismiss acme/service
 ```
 
@@ -33,7 +33,7 @@ If you omit `repo-ref`, `wsfold` opens an interactive Bubble Tea picker with liv
 
 ```bash
 wsfold summon
-wsfold summon-untrusted
+wsfold summon-external
 wsfold dismiss
 ```
 
@@ -54,7 +54,7 @@ eval "$(wsfold completion zsh)"
 This local completion currently suggests:
 
 - trusted local repos for `wsfold summon`
-- external local repos for `wsfold summon-untrusted`
+- external local repos for `wsfold summon-external`
 - repos already attached in the current workspace for `wsfold dismiss`
 
 `repo-ref` is slug-first:
@@ -63,7 +63,7 @@ This local completion currently suggests:
 - short repo name when the local repo index makes it unambiguous
 
 `summon` only works for repos classified as trusted.
-`summon-untrusted` only works for repos classified as external.
+`summon-external` only works for repos classified as external.
 
 ## Environment
 
@@ -84,7 +84,7 @@ Rules:
 - trusted remote summon clones use `gh repo clone`, following the user’s `gh` git protocol settings
 - `wsfold reindex trusted` performs a blocking refresh of the trusted GitHub cache
 - run `gh auth login` to enable trusted remote refresh
-- `wsfold summon-untrusted` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`
+- `wsfold summon-external` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`
 - `WSFOLD_PROJECTS_DIR` optionally overrides the trusted mount directory name; default is `_prj`
 
 ## Generated Files

@@ -15,7 +15,7 @@ Usage:
   wsfold init
   wsfold summon [repo-ref]
   wsfold reindex trusted
-  wsfold summon-untrusted [repo-ref]
+  wsfold summon-external [repo-ref]
   wsfold dismiss [repo-ref]
   wsfold version
   wsfold completion zsh
@@ -24,7 +24,7 @@ Commands:
   init              initialize the current directory as a wsfold workspace
   summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj}; remote trusted repos are discovered and cloned via gh
   reindex trusted   refresh the trusted GitHub remote cache
-  summon-untrusted  add an external repository as a workspace root only
+  summon-external   add an external repository as a workspace root only
   dismiss           remove a repository from the current composition
   version           print build version metadata
   completion        print shell completion setup
@@ -87,11 +87,11 @@ func Run(args []string, stdout, stderr io.Writer) error {
 			}
 		}
 		return nil
-	case "summon-untrusted":
+	case "summon-external":
 		if len(args) == 1 {
-			return reconcileSelection(app, cwd, "summon-untrusted", stdout, stderr)
+			return reconcileSelection(app, cwd, "summon-external", stdout, stderr)
 		}
-		refs, err := resolveCommandRefs(app, cwd, "summon-untrusted", args, stdout, stderr)
+		refs, err := resolveCommandRefs(app, cwd, "summon-external", args, stdout, stderr)
 		if err != nil {
 			return err
 		}
@@ -164,7 +164,7 @@ func reconcileSelection(app *wsfold.App, cwd string, command string, stdout io.W
 			if err := app.Summon(cwd, ref); err != nil {
 				return err
 			}
-		case "summon-untrusted":
+		case "summon-external":
 			if err := app.SummonUntrusted(cwd, ref); err != nil {
 				return err
 			}

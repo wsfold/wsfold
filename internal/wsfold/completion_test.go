@@ -33,9 +33,9 @@ func TestCompleteTrustedAndExternalRepos(t *testing.T) {
 		t.Fatalf("expected origin slug in trusted description, got %#v", candidates[0])
 	}
 
-	candidates, err = app.Complete(h.Workspace, "summon-untrusted", "leg")
+	candidates, err = app.Complete(h.Workspace, "summon-external", "leg")
 	if err != nil {
-		t.Fatalf("Complete summon-untrusted returned error: %v", err)
+		t.Fatalf("Complete summon-external returned error: %v", err)
 	}
 	if len(candidates) != 1 || candidates[0].Value != "legacy-tool" {
 		t.Fatalf("unexpected external completion candidates: %#v", candidates)

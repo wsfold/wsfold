@@ -33,3 +33,34 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout Homebrew Tap
+        uses: actions/checkout@v4
+        with:
+          repository: wsfold/homebrew-wsfold
+          token: ${{ secrets.HOMEBREW_TAP_PUSH_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update Homebrew Formula
+        env:
+          VERSION_TAG: ${{ github.ref_name }}
+          SOURCE_REPO: ${{ github.repository }}
+          CHECKSUMS_FILE: dist/checksums.txt
+        run: |
+          chmod +x ./scripts/update-homebrew-tap.sh
+          ./scripts/update-homebrew-tap.sh homebrew-tap
+
+      - name: Publish Homebrew Tap Update
+        env:
+          VERSION_TAG: ${{ github.ref_name }}
+        run: |
+          cd homebrew-tap
+          if git diff --quiet -- Formula/wsfold.rb; then
+            echo "Formula already up to date"
+            exit 0
+          fi
+          git config user.name "wsfold release bot"
+          git config user.email "actions@github.com"
+          git add Formula/wsfold.rb
+          git commit -m "Update wsfold to ${VERSION_TAG}"
+          git push origin HEAD:main

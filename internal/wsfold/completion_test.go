@@ -74,7 +74,9 @@ func TestCompleteDismissFromManifest(t *testing.T) {
 	setCompletionEnv(t, h)
 	initWorkspace(t, h)
 	h.CreateGitHubRemote("acme", "service")
-	h.CreateGitHubRemote("other", "legacy-tool")
+	externalRepo := filepath.Join(h.ExternalRoot, "other", "legacy-tool")
+	h.InitRepo(externalRepo)
+	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/other/legacy-tool.git")
 
 	app := NewApp()
 	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}

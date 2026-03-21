@@ -69,8 +69,8 @@ Rules:
 
 - repos under `WSFOLD_TRUSTED_DIR` are eligible for `./_prj/<name>` symlink mounting by default
 - repos under `WSFOLD_EXTERNAL_DIR` are never symlinked into the workspace tree
-- missing GitHub repos from trusted orgs clone into `WSFOLD_TRUSTED_DIR`
-- all other clone targets default to `WSFOLD_EXTERNAL_DIR`
+- missing GitHub repos from trusted orgs may clone into `WSFOLD_TRUSTED_DIR` via `wsfold summon`
+- `wsfold summon-untrusted` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`
 - `WSFOLD_PROJECTS_DIR` optionally overrides the trusted mount directory name; default is `_prj`
 
 ## Generated Files

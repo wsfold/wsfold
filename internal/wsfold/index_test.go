@@ -195,6 +195,27 @@ func TestFindOrCloneRepoRejectsTrustedClassificationForUntrustedCommand(t *testi
 	}
 }
 
+func TestFindOrCloneRepoDoesNotCloneForUntrustedCommand(t *testing.T) {
+	h := testutil.NewHarness(t)
+	h.CreateGitHubRemote("other", "legacy")
+
+	cfg := Config{
+		TrustedDir:        h.TrustedRoot,
+		ExternalDir:       h.ExternalRoot,
+		TrustedGitHubOrgs: []string{"acme"},
+	}
+
+	_, err := findOrCloneRepo(cfg, Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}, "other/legacy", TrustClassExternal)
+	if err == nil || !strings.Contains(err.Error(), "only supports local external repos") {
+		t.Fatalf("expected local-only external guard, got %v", err)
+	}
+
+	expected := filepath.Join(h.ExternalRoot, "other", "legacy")
+	if _, statErr := os.Stat(expected); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("expected no external clone on disk, stat error: %v", statErr)
+	}
+}
+
 func TestParseGitHubSlugPrefersSSHPatternOverGenericSplit(t *testing.T) {
 	t.Parallel()
 

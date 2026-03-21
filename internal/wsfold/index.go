@@ -217,12 +217,13 @@ func findOrCloneRepo(cfg Config, runner Runner, ref string, requested TrustClass
 	switch requested {
 	case TrustClassTrusted:
 		if classification != TrustClassTrusted {
-			return Repo{}, fmt.Errorf("repo ref %q is not classified as trusted; use summon-untrusted", ref)
+			return Repo{}, fmt.Errorf("repo ref %q is not classified as trusted; use summon-untrusted for local external repos only", ref)
 		}
 	case TrustClassExternal:
 		if classification == TrustClassTrusted {
 			return Repo{}, fmt.Errorf("repo ref %q is classified as trusted; use summon", ref)
 		}
+		return Repo{}, fmt.Errorf("repo ref %q was not found locally under %s; summon-untrusted only supports local external repos", ref, cfg.ExternalDir)
 	default:
 		return Repo{}, fmt.Errorf("unsupported trust class %q", requested)
 	}
@@ -232,10 +233,7 @@ func findOrCloneRepo(cfg Config, runner Runner, ref string, requested TrustClass
 		return Repo{}, err
 	}
 
-	root := cfg.ExternalDir
-	if requested == TrustClassTrusted {
-		root = cfg.TrustedDir
-	}
+	root := cfg.TrustedDir
 	destination := filepath.Join(root, owner, name)
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return Repo{}, fmt.Errorf("create clone parent: %w", err)

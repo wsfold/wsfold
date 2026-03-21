@@ -162,6 +162,46 @@ func TestPickerModelAlignsColumnsForSummonRows(t *testing.T) {
 	}
 }
 
+func TestPickerModelSearchUsesOnlyVisibleFields(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	model = updated.(pickerModel)
+
+	if len(model.filtered) != 0 {
+		t.Fatalf("expected source marker to be excluded from search, got %#v", model.filtered)
+	}
+}
+
+func TestPickerModelFiltersVeryLowScoreMatches(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "mikhail-yaskou/piskel", Name: "piskel", Slug: "mikhail-yaskou/piskel", Source: wsfold.CompletionSourceLocal},
+		{Value: "mikhail-yaskou/vscode-as-mcp-server-with-approvals", Name: "vscode-as-mcp-server-with-approvals", Slug: "mikhail-yaskou/vscode-as-mcp-server-with-approvals", Source: wsfold.CompletionSourceLocal},
+	})
+
+	for _, r := range "piksel" {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(pickerModel)
+	}
+
+	if len(model.filtered) != 1 {
+		t.Fatalf("expected low-score fuzzy match to be filtered out, got %#v", model.filtered)
+	}
+	if model.filtered[0].candidate.Name != "piskel" {
+		t.Fatalf("expected relevant fuzzy match to remain, got %#v", model.filtered[0].candidate)
+	}
+}
+
 func stripANSI(text string) string {
 	return regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(text, "")
 }

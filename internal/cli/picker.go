@@ -17,6 +17,8 @@ import (
 
 var errPickerCancelled = errors.New("selection cancelled")
 
+const minFuzzyMatchScore = -20
+
 type pickerFunc func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error)
 
 var runPicker pickerFunc = runBubbleTeaPicker
@@ -106,10 +108,9 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 
 	items := make([]pickerItem, 0, len(candidates))
 	for _, candidate := range candidates {
-		searchParts := []string{candidate.Value, candidate.Description, candidate.Name, candidate.Slug, string(candidate.Source)}
 		items = append(items, pickerItem{
 			candidate: candidate,
-			search:    strings.TrimSpace(strings.Join(searchParts, " ")),
+			search:    pickerSearchText(candidate),
 		})
 	}
 
@@ -208,6 +209,9 @@ func (m *pickerModel) refresh() {
 	matches := fuzzy.Find(query, searchable)
 	filtered := make([]pickerItem, 0, len(matches))
 	for _, match := range matches {
+		if match.Score < minFuzzyMatchScore {
+			continue
+		}
 		filtered = append(filtered, m.items[match.Index])
 	}
 
@@ -229,10 +233,9 @@ func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate)
 
 	items := make([]pickerItem, 0, len(candidates))
 	for _, candidate := range candidates {
-		searchParts := []string{candidate.Value, candidate.Description, candidate.Name, candidate.Slug, string(candidate.Source)}
 		items = append(items, pickerItem{
 			candidate: candidate,
-			search:    strings.TrimSpace(strings.Join(searchParts, " ")),
+			search:    pickerSearchText(candidate),
 		})
 	}
 	m.items = items
@@ -352,6 +355,20 @@ func pickerPrimaryText(candidate wsfold.CompletionCandidate) string {
 		return candidate.Name
 	}
 	return candidate.Value
+}
+
+func pickerSearchText(candidate wsfold.CompletionCandidate) string {
+	parts := []string{pickerPrimaryText(candidate)}
+
+	detail := candidate.Slug
+	if detail == "" {
+		detail = candidate.Description
+	}
+	if strings.TrimSpace(detail) != "" && detail != parts[0] {
+		parts = append(parts, detail)
+	}
+
+	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
 func refreshTrustedSummonPickerCmd(app *wsfold.App, cwd string) tea.Cmd {

@@ -104,7 +104,7 @@ type pickerModel struct {
 
 func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pickerModel {
 	input := textinput.New()
-	input.Placeholder = "Type to fuzzy filter repositories"
+	input.Placeholder = "Type to search"
 	input.Prompt = "filter> "
 	input.Focus()
 	input.CharLimit = 256
@@ -466,7 +466,7 @@ func (m pickerModel) hintText() string {
 func pickerTitle(command string) string {
 	switch command {
 	case "summon":
-		return "Select trusted repository"
+		return "Choose a trusted repository to include in your workspace"
 	case "summon-untrusted":
 		return "Select external repository"
 	case "dismiss":

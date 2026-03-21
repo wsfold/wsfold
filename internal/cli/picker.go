@@ -208,6 +208,9 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refresh()
 			return m, nil
 		case "enter":
+			if m.multiSelect && len(m.selected) == 0 {
+				return m, nil
+			}
 			return m, tea.Quit
 		}
 	}
@@ -453,6 +456,9 @@ func (m pickerModel) selectedValues() []string {
 
 func (m pickerModel) hintText() string {
 	if m.multiSelect {
+		if len(m.selected) == 0 {
+			return "Space toggle, Esc cancel"
+		}
 		return "Space toggle, Enter apply, Esc cancel"
 	}
 	return "Enter select, Space multi-select, Esc cancel"

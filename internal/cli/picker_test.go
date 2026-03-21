@@ -62,6 +62,31 @@ func TestPickerModelSpaceEnablesMultiSelectAndTogglesItems(t *testing.T) {
 	}
 }
 
+func TestPickerModelEnterDoesNothingInMultiSelectWithoutSelections(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Value: "alpha"},
+		{Value: "beta"},
+	})
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	if !model.multiSelect {
+		t.Fatalf("expected picker to enter multi-select mode")
+	}
+
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(pickerModel)
+	if cmd != nil {
+		t.Fatalf("did not expect enter to quit when multi-select has no selections")
+	}
+	if model.err != nil {
+		t.Fatalf("did not expect picker error on inert enter, got %v", model.err)
+	}
+	if len(model.selectedValues()) != 0 {
+		t.Fatalf("did not expect any selections after inert enter, got %#v", model.selectedValues())
+	}
+}
+
 func TestPickerModelPreselectsAttachedReposForSummon(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
 		{Value: "alpha", Attached: true},
@@ -452,6 +477,24 @@ func TestPickerModelUsesMultiSelectHintWhenSelectionsExist(t *testing.T) {
 	}
 	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Multi mode]") {
 		t.Fatalf("expected multi-select title badge for preselected summon picker, got:\n%s", view)
+	}
+}
+
+func TestPickerModelUsesNoEnterHintForEmptyMultiSelect(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha"},
+		{Value: "beta", Name: "beta"},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "Space toggle, Esc cancel") {
+		t.Fatalf("expected empty multi-select hint, got:\n%s", view)
+	}
+	if strings.Contains(view, "Enter apply") {
+		t.Fatalf("did not expect Enter apply hint without selections, got:\n%s", view)
 	}
 }
 

@@ -27,13 +27,13 @@ Usage:
   wsfold completion zsh
 
 Commands:
-  init              initialize the current directory as a wsfold workspace
-  summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj}; remote trusted repos are discovered and cloned via gh
-  reindex trusted   refresh the trusted GitHub remote cache
-  summon-external   add an external repository as a workspace root only
+  summon            attach a trusted repository to the workspace, local or remote
+  summon-external   add an external repository as a workspace root
   dismiss           remove a repository from the current composition
+  init              initialize the current directory as a wsfold workspace
+  reindex trusted   refresh the trusted GitHub remote cache
   version           print build version metadata
-  completion        print shell completion setup
+  completion        print shell autocompletion setup
 `
 
 func Run(args []string, stdout, stderr io.Writer) error {

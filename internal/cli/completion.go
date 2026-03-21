@@ -34,11 +34,11 @@ _wsfold() {
 
   local -a subcommands
   subcommands=(
-    'init:initialize the current directory as a workspace'
-    'summon:attach a trusted repository'
-    'reindex:refresh trusted remote cache'
+    'summon:attach a trusted repository to the workspace, local or remote'
     'summon-external:add an external repository as a workspace root'
     'dismiss:remove a repository from the current composition'
+    'init:initialize the current directory as a workspace'
+    'reindex:refresh trusted remote cache'
     'version:print build version metadata'
     'completion:print shell completion setup'
   )
@@ -50,7 +50,7 @@ _wsfold() {
 
   case $state in
     command)
-      _describe -t commands 'wsfold commands' subcommands
+      _describe -V -t commands 'wsfold commands' subcommands
       return
       ;;
     repo)
@@ -89,14 +89,32 @@ _wsfold() {
 compdef _wsfold wsfold ./dist/wsfold ./wsfold
 `
 
+const zshCompletionSetupHelp = `Shell completion setup
+
+Current shell session:
+  eval "$(wsfold completion zsh)"
+
+Persist in your zsh profile:
+  echo 'eval "$(wsfold completion zsh)"' >> ~/.zshrc
+  exec zsh
+`
+
 func writeZshCompletion(w io.Writer) error {
 	_, err := io.WriteString(w, zshCompletionScript)
 	return err
 }
 
+func writeCompletionSetupHelp(w io.Writer) error {
+	_, err := io.WriteString(w, zshCompletionSetupHelp)
+	return err
+}
+
 func writeCompletions(cwd string, args []string, stdout io.Writer) error {
+	if len(args) == 1 {
+		return writeCompletionSetupHelp(stdout)
+	}
 	if len(args) != 2 {
-		return fmt.Errorf("expected a shell name, got %d arguments", len(args)-1)
+		return fmt.Errorf("expected zero or one shell name, got %d arguments", len(args)-1)
 	}
 
 	switch args[1] {

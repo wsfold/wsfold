@@ -96,6 +96,29 @@ func TestRunCompletionZsh(t *testing.T) {
 	}
 }
 
+func TestRunCompletionWithoutArgsPrintsSetupHelp(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"completion"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), `eval "$(wsfold completion zsh)"`) {
+		t.Fatalf("expected eval setup command in completion help, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `>> ~/.zshrc`) {
+		t.Fatalf("expected profile setup command in completion help, got %q", stdout.String())
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr output: %q", stderr.String())
+	}
+}
+
 func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 	original := runPicker
 	t.Cleanup(func() { runPicker = original })

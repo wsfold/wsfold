@@ -469,7 +469,7 @@ func pickerTitle(command string) string {
 	case "summon":
 		return "Choose a trusted repository to include in your workspace"
 	case "summon-external":
-		return "Select external repository"
+		return "Choose an external repository to add to your workspace"
 	case "dismiss":
 		return "Select repository to dismiss"
 	default:

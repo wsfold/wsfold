@@ -104,12 +104,15 @@ func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 		return []string{}, errPickerCancelled
 	}
 
-	err := Run([]string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
+	refs, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err != errPickerCancelled {
-		t.Fatalf("unexpected Run error: %v", err)
+		t.Fatalf("unexpected resolveCommandRefs error: %v", err)
 	}
 	if !called {
 		t.Fatal("expected picker to be called")
+	}
+	if len(refs) != 0 {
+		t.Fatalf("expected no refs on picker cancellation, got %#v", refs)
 	}
 }
 

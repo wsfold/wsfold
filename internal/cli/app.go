@@ -136,7 +136,12 @@ func resolveCommandRefs(app *wsfold.App, cwd string, command string, args []stri
 				return nil, nil
 			}
 		}
-		return runPicker(app, cwd, command, stdout, stderr)
+		refs, err := runPicker(app, cwd, command, stdout, stderr)
+		if err == errPickerCancelled {
+			_, _ = fmt.Fprintf(stdout, "%s·%s Selection cancelled\n", ansiYellow+ansiBold, ansiReset)
+			return nil, nil
+		}
+		return refs, err
 	case 2:
 		return []string{args[1]}, nil
 	default:
@@ -163,6 +168,10 @@ func reconcileSelection(app *wsfold.App, cwd string, command string, stdout io.W
 	}
 
 	selected, err := runPicker(app, cwd, command, stdout, stderr)
+	if err == errPickerCancelled {
+		_, _ = fmt.Fprintf(stdout, "%s·%s Selection cancelled\n", ansiYellow+ansiBold, ansiReset)
+		return nil
+	}
 	if err != nil {
 		return err
 	}

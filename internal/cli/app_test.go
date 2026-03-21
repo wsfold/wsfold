@@ -109,8 +109,9 @@ func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 		return []string{}, errPickerCancelled
 	}
 
-	refs, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err != errPickerCancelled {
+	var stdout bytes.Buffer
+	refs, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &stdout, &bytes.Buffer{})
+	if err != nil {
 		t.Fatalf("unexpected resolveCommandRefs error: %v", err)
 	}
 	if !called {
@@ -118,6 +119,9 @@ func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 	}
 	if len(refs) != 0 {
 		t.Fatalf("expected no refs on picker cancellation, got %#v", refs)
+	}
+	if !strings.Contains(stdout.String(), "Selection cancelled") {
+		t.Fatalf("expected neutral cancellation message, got %q", stdout.String())
 	}
 }
 
@@ -150,6 +154,31 @@ func TestResolveCommandRefsDismissWithoutCandidatesIsNoop(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Nothing to dismiss") {
 		t.Fatalf("expected friendly dismiss noop message, got %q", stdout.String())
+	}
+}
+
+func TestReconcileSelectionTreatsPickerCancellationAsNoop(t *testing.T) {
+	original := runPicker
+	t.Cleanup(func() { runPicker = original })
+
+	runPicker = func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error) {
+		return nil, errPickerCancelled
+	}
+
+	h := testutil.NewHarness(t)
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+
+	app := wsfold.NewApp()
+	var stdout bytes.Buffer
+	if err := reconcileSelection(app, h.Workspace, "summon-external", &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("reconcileSelection returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Selection cancelled") {
+		t.Fatalf("expected neutral cancellation message, got %q", stdout.String())
 	}
 }
 

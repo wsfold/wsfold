@@ -183,8 +183,8 @@ func (m pickerModel) View() string {
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	markerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	emptyMarkerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	markerStyle := lipgloss.NewStyle().Foreground(selectionMarkerColor(m.command))
 
 	lines := []string{
 		titleStyle.Render(pickerTitle(m.command)),
@@ -261,4 +261,11 @@ func visibleRange(cursor int, total int, maxItems int) (int, int) {
 		start = end - maxItems
 	}
 	return start, end
+}
+
+func selectionMarkerColor(command string) lipgloss.TerminalColor {
+	if command == "dismiss" {
+		return lipgloss.Color("196")
+	}
+	return lipgloss.Color("42")
 }

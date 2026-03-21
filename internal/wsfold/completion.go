@@ -12,6 +12,15 @@ type CompletionCandidate struct {
 	Value       string
 	Description string
 	Attached    bool
+	Name        string
+	Slug        string
+	Source      CompletionSource
+}
+
+type TrustedSummonPickerState struct {
+	Candidates []CompletionCandidate
+	Refreshing bool
+	Status     string
 }
 
 func (a *App) Complete(cwd string, command string, prefix string) ([]CompletionCandidate, error) {
@@ -25,6 +34,46 @@ func (a *App) Complete(cwd string, command string, prefix string) ([]CompletionC
 	default:
 		return nil, nil
 	}
+}
+
+func (a *App) TrustedSummonPickerState(cwd string) (TrustedSummonPickerState, error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+
+	localCandidates, err := trustedLocalCompletionCandidates(cwd, cfg.TrustedDir, a.Runner)
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+
+	remoteState, err := trustedRemoteIndexState(cfg, a.Runner)
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+
+	return TrustedSummonPickerState{
+		Candidates: mergeTrustedSummonCandidates(localCandidates, trustedRemoteCompletionCandidates(remoteState.Repos)),
+		Refreshing: remoteState.NeedsRefresh && remoteState.GitHubReady,
+		Status:     remoteState.StatusMessage,
+	}, nil
+}
+
+func (a *App) RefreshTrustedSummonPickerState(cwd string) (TrustedSummonPickerState, error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+
+	refreshErr := error(nil)
+	if _, err := refreshTrustedRemoteIndex(cfg, a.Runner); err != nil {
+		refreshErr = err
+	}
+	state, err := a.TrustedSummonPickerState(cwd)
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+	return state, refreshErr
 }
 
 func (a *App) completeRepoIndex(cwd string, prefix string, requested TrustClass) ([]CompletionCandidate, error) {
@@ -44,29 +93,18 @@ func (a *App) completeRepoIndex(cwd string, prefix string, requested TrustClass)
 	}
 
 	attached := attachedCheckoutPaths(cwd)
-	valueByPath := preferredCompletionValues(repos)
-	candidates := make([]CompletionCandidate, 0, len(repos))
-	seen := map[string]struct{}{}
-	for _, repo := range repos {
-		value := valueByPath[repo.CheckoutPath]
-		if prefix != "" && !strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-
-		description := completionDescription(repo.OriginURL, repo.CheckoutPath)
-		candidates = append(candidates, CompletionCandidate{
-			Value:       value,
-			Description: description,
-			Attached:    attached[repo.CheckoutPath],
-		})
-	}
+	candidates := completionCandidatesFromRepos(repos, attached, prefix)
 
 	sortCandidates(candidates)
 	return candidates, nil
+}
+
+func trustedLocalCompletionCandidates(cwd string, root string, runner Runner) ([]CompletionCandidate, error) {
+	repos, err := discoverCompletionRepos(root, TrustClassTrusted, runner)
+	if err != nil {
+		return nil, err
+	}
+	return completionCandidatesFromRepos(repos, attachedCheckoutPaths(cwd), ""), nil
 }
 
 func discoverCompletionRepos(root string, trustClass TrustClass, runner Runner) ([]Repo, error) {
@@ -144,6 +182,99 @@ func sortCandidates(candidates []CompletionCandidate) {
 		}
 		return candidates[i].Description < candidates[j].Description
 	})
+}
+
+func completionCandidatesFromRepos(repos []Repo, attached map[string]bool, prefix string) []CompletionCandidate {
+	valueByPath := preferredCompletionValues(repos)
+	candidates := make([]CompletionCandidate, 0, len(repos))
+	seen := map[string]struct{}{}
+	for _, repo := range repos {
+		value := valueByPath[repo.CheckoutPath]
+		if prefix != "" && !strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+
+		description := completionDescription(repo.OriginURL, repo.CheckoutPath)
+		candidates = append(candidates, CompletionCandidate{
+			Value:       value,
+			Description: description,
+			Attached:    attached[repo.CheckoutPath],
+			Name:        repo.Name,
+			Slug:        repo.Slug,
+			Source:      CompletionSourceLocal,
+		})
+	}
+	return candidates
+}
+
+func trustedRemoteCompletionCandidates(repos []TrustedRemoteRepo) []CompletionCandidate {
+	candidates := make([]CompletionCandidate, 0, len(repos))
+	for _, repo := range repos {
+		if repo.Archived || strings.TrimSpace(repo.FullName) == "" {
+			continue
+		}
+
+		name := strings.ToLower(strings.TrimSpace(repo.Name))
+		if name == "" {
+			_, parsedName, ok := parseGitHubSlug(repo.FullName)
+			if ok {
+				name = parsedName
+			}
+		}
+		candidates = append(candidates, CompletionCandidate{
+			Value:       repo.FullName,
+			Description: repo.FullName,
+			Name:        name,
+			Slug:        repo.FullName,
+			Source:      CompletionSourceRemote,
+		})
+	}
+	sortCandidates(candidates)
+	return candidates
+}
+
+func mergeTrustedSummonCandidates(local []CompletionCandidate, remote []CompletionCandidate) []CompletionCandidate {
+	merged := make([]CompletionCandidate, 0, len(local)+len(remote))
+	localBySlug := map[string]struct{}{}
+
+	for _, candidate := range local {
+		merged = append(merged, candidate)
+		if candidate.Slug != "" {
+			localBySlug[strings.ToLower(candidate.Slug)] = struct{}{}
+		}
+	}
+
+	for _, candidate := range remote {
+		if candidate.Slug != "" {
+			if _, ok := localBySlug[strings.ToLower(candidate.Slug)]; ok {
+				continue
+			}
+		}
+		merged = append(merged, candidate)
+	}
+
+	sort.Slice(merged, func(i, j int) bool {
+		leftName := merged[i].Name
+		if leftName == "" {
+			leftName = merged[i].Value
+		}
+		rightName := merged[j].Name
+		if rightName == "" {
+			rightName = merged[j].Value
+		}
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		if merged[i].Source != merged[j].Source {
+			return merged[i].Source < merged[j].Source
+		}
+		return merged[i].Value < merged[j].Value
+	})
+	return merged
 }
 
 func preferredCompletionValues(repos []Repo) map[string]string {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,20 +17,17 @@ import (
 
 var errPickerCancelled = errors.New("selection cancelled")
 
+const minFuzzyMatchScore = -20
+
 type pickerFunc func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error)
 
 var runPicker pickerFunc = runBubbleTeaPicker
 
 func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error) {
-	candidates, err := app.Complete(cwd, command, "")
+	model, err := buildPickerModel(app, cwd, command)
 	if err != nil {
 		return nil, err
 	}
-	if len(candidates) == 0 {
-		return nil, fmt.Errorf("no candidates available for %s", command)
-	}
-
-	model := newPickerModel(command, candidates)
 	program := tea.NewProgram(
 		model,
 		tea.WithInput(os.Stdin),
@@ -51,19 +49,53 @@ func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.W
 	return result.selectedValues(), nil
 }
 
+func buildPickerModel(app *wsfold.App, cwd string, command string) (pickerModel, error) {
+	if command == "summon" {
+		state, err := app.TrustedSummonPickerState(cwd)
+		if err != nil {
+			return pickerModel{}, err
+		}
+
+		model := newPickerModel(command, state.Candidates)
+		model.status = state.Status
+		model.refreshing = state.Refreshing
+		if state.Refreshing {
+			model.initCmd = refreshTrustedSummonPickerCmd(app, cwd)
+		}
+		return model, nil
+	}
+
+	candidates, err := app.Complete(cwd, command, "")
+	if err != nil {
+		return pickerModel{}, err
+	}
+	if len(candidates) == 0 {
+		return pickerModel{}, fmt.Errorf("no candidates available for %s", command)
+	}
+	return newPickerModel(command, candidates), nil
+}
+
 type pickerItem struct {
 	candidate wsfold.CompletionCandidate
 	search    string
 }
 
+type trustedSummonRefreshMsg struct {
+	state wsfold.TrustedSummonPickerState
+	err   error
+}
+
 type pickerModel struct {
-	command  string
-	input    textinput.Model
-	items    []pickerItem
-	filtered []pickerItem
-	cursor   int
-	selected map[string]bool
-	err      error
+	command    string
+	input      textinput.Model
+	items      []pickerItem
+	filtered   []pickerItem
+	cursor     int
+	selected   map[string]bool
+	err        error
+	status     string
+	refreshing bool
+	initCmd    tea.Cmd
 }
 
 func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pickerModel {
@@ -78,7 +110,7 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 	for _, candidate := range candidates {
 		items = append(items, pickerItem{
 			candidate: candidate,
-			search:    strings.TrimSpace(candidate.Value + " " + candidate.Description),
+			search:    pickerSearchText(candidate),
 		})
 	}
 
@@ -100,11 +132,23 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 }
 
 func (m pickerModel) Init() tea.Cmd {
+	if m.initCmd != nil {
+		return tea.Batch(textinput.Blink, m.initCmd)
+	}
 	return textinput.Blink
 }
 
 func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case trustedSummonRefreshMsg:
+		m.refreshing = false
+		if msg.err != nil {
+			m.status = fmt.Sprintf("Remote refresh failed: %v; using cached results", msg.err)
+			return m, nil
+		}
+		m.status = msg.state.Status
+		m.replaceCandidates(msg.state.Candidates)
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":
@@ -165,6 +209,9 @@ func (m *pickerModel) refresh() {
 	matches := fuzzy.Find(query, searchable)
 	filtered := make([]pickerItem, 0, len(matches))
 	for _, match := range matches {
+		if match.Score < minFuzzyMatchScore {
+			continue
+		}
 		filtered = append(filtered, m.items[match.Index])
 	}
 
@@ -178,6 +225,33 @@ func (m *pickerModel) refresh() {
 	}
 }
 
+func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate) {
+	currentValue := ""
+	if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
+		currentValue = m.filtered[m.cursor].candidate.Value
+	}
+
+	items := make([]pickerItem, 0, len(candidates))
+	for _, candidate := range candidates {
+		items = append(items, pickerItem{
+			candidate: candidate,
+			search:    pickerSearchText(candidate),
+		})
+	}
+	m.items = items
+	m.refresh()
+
+	if currentValue == "" {
+		return
+	}
+	for i, item := range m.filtered {
+		if item.candidate.Value == currentValue {
+			m.cursor = i
+			return
+		}
+	}
+}
+
 func (m pickerModel) View() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
@@ -185,6 +259,9 @@ func (m pickerModel) View() string {
 	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	emptyMarkerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 	markerStyle := lipgloss.NewStyle().Foreground(selectionMarkerColor(m.command))
+	localStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	remoteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+	slugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 	lines := []string{
 		titleStyle.Render(pickerTitle(m.command)),
@@ -196,6 +273,7 @@ func (m pickerModel) View() string {
 		lines = append(lines, hintStyle.Render("No matches"))
 	} else {
 		start, end := visibleRange(m.cursor, len(m.filtered), 10)
+		nameWidth, sourceWidth := pickerColumnWidths(m.filtered[start:end])
 		for i := start; i < end; i++ {
 			item := m.filtered[i].candidate
 			prefix := "  "
@@ -203,10 +281,7 @@ func (m pickerModel) View() string {
 			if m.selected[item.Value] {
 				selectMarker = markerStyle.Render("●")
 			}
-			render := fmt.Sprintf("%s %s", selectMarker, item.Value)
-			if item.Description != "" {
-				render = fmt.Sprintf("%s  %s", render, descStyle.Render(item.Description))
-			}
+			render := renderPickerRow(item, selectMarker, nameWidth, sourceWidth, localStyle, remoteStyle, slugStyle, descStyle)
 			if i == m.cursor {
 				prefix = "> "
 				render = selectedStyle.Render(render)
@@ -216,6 +291,11 @@ func (m pickerModel) View() string {
 	}
 
 	lines = append(lines, "", hintStyle.Render("Space toggle, Enter apply, Esc cancel, type to fuzzy filter"))
+	if strings.TrimSpace(m.status) != "" {
+		lines = append(lines, hintStyle.Render(m.status))
+	} else if m.refreshing {
+		lines = append(lines, hintStyle.Render("Refreshing trusted GitHub index..."))
+	}
 	return strings.Join(lines, "\n")
 }
 
@@ -268,4 +348,116 @@ func selectionMarkerColor(command string) lipgloss.TerminalColor {
 		return lipgloss.Color("196")
 	}
 	return lipgloss.Color("42")
+}
+
+func pickerPrimaryText(candidate wsfold.CompletionCandidate) string {
+	if candidate.Name != "" {
+		return candidate.Name
+	}
+	return candidate.Value
+}
+
+func pickerSearchText(candidate wsfold.CompletionCandidate) string {
+	parts := []string{pickerPrimaryText(candidate)}
+
+	detail := candidate.Slug
+	if detail == "" {
+		detail = candidate.Description
+	}
+	if strings.TrimSpace(detail) != "" && detail != parts[0] {
+		parts = append(parts, detail)
+	}
+
+	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+func refreshTrustedSummonPickerCmd(app *wsfold.App, cwd string) tea.Cmd {
+	return func() tea.Msg {
+		state, err := app.RefreshTrustedSummonPickerState(cwd)
+		return trustedSummonRefreshMsg{state: state, err: err}
+	}
+}
+
+func renderPickerRow(
+	candidate wsfold.CompletionCandidate,
+	selectMarker string,
+	nameWidth int,
+	sourceWidth int,
+	localStyle lipgloss.Style,
+	remoteStyle lipgloss.Style,
+	slugStyle lipgloss.Style,
+	descStyle lipgloss.Style,
+) string {
+	name := lipgloss.NewStyle().Width(nameWidth).Render(truncateText(pickerPrimaryText(candidate), nameWidth))
+	row := fmt.Sprintf("%s %s", selectMarker, name)
+
+	if candidate.Source != "" {
+		sourceText := lipgloss.NewStyle().Width(sourceWidth).Render(string(candidate.Source))
+		row = fmt.Sprintf("%s  %s", row, renderSourceMarkerText(candidate.Source, sourceText, localStyle, remoteStyle))
+	}
+
+	detail := candidate.Slug
+	if detail == "" {
+		detail = candidate.Description
+	}
+	if detail != "" {
+		detail = truncateText(detail, 48)
+		if candidate.Slug != "" {
+			row = fmt.Sprintf("%s  %s", row, slugStyle.Render(detail))
+		} else {
+			row = fmt.Sprintf("%s  %s", row, descStyle.Render(detail))
+		}
+	}
+
+	return row
+}
+
+func pickerColumnWidths(items []pickerItem) (int, int) {
+	nameWidth := 0
+	sourceWidth := 0
+	for _, item := range items {
+		nameWidth = max(nameWidth, min(displayWidth(pickerPrimaryText(item.candidate)), 28))
+		sourceWidth = max(sourceWidth, displayWidth(string(item.candidate.Source)))
+	}
+	if nameWidth == 0 {
+		nameWidth = 1
+	}
+	if sourceWidth == 0 {
+		sourceWidth = len("remote")
+	}
+	return nameWidth, sourceWidth
+}
+
+func renderSourceMarkerText(source wsfold.CompletionSource, text string, localStyle lipgloss.Style, remoteStyle lipgloss.Style) string {
+	switch source {
+	case wsfold.CompletionSourceLocal:
+		return localStyle.Render(text)
+	case wsfold.CompletionSourceRemote:
+		return remoteStyle.Render(text)
+	default:
+		return text
+	}
+}
+
+func truncateText(text string, width int) string {
+	if width <= 0 || displayWidth(text) <= width {
+		return text
+	}
+	if width == 1 {
+		return "…"
+	}
+
+	runes := []rune(text)
+	for len(runes) > 0 {
+		candidate := string(runes) + "…"
+		if displayWidth(candidate) <= width {
+			return candidate
+		}
+		runes = runes[:len(runes)-1]
+	}
+	return "…"
+}
+
+func displayWidth(text string) int {
+	return utf8.RuneCountInString(text)
 }

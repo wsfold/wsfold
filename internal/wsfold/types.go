@@ -3,10 +3,13 @@ package wsfold
 import "fmt"
 
 type TrustClass string
+type CompletionSource string
 
 const (
-	TrustClassTrusted  TrustClass = "trusted"
-	TrustClassExternal TrustClass = "external"
+	TrustClassTrusted      TrustClass       = "trusted"
+	TrustClassExternal     TrustClass       = "external"
+	CompletionSourceLocal  CompletionSource = "local"
+	CompletionSourceRemote CompletionSource = "remote"
 )
 
 type Repo struct {

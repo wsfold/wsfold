@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openclaw/wsfold/internal/testutil"
 )
@@ -100,6 +101,72 @@ func TestCompleteDismissFromManifest(t *testing.T) {
 	}
 	if !candidates[0].Attached {
 		t.Fatalf("expected dismiss candidate to be marked attached, got %#v", candidates[0])
+	}
+}
+
+func TestTrustedSummonPickerStateMergesCachedRemoteReposAndPrefersLocal(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setCompletionEnv(t, h)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(h.Root, "cache"))
+
+	trustedRepo := filepath.Join(h.TrustedRoot, "math-app")
+	h.InitRepo(trustedRepo)
+	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	if err := saveTrustedOrgCache(trustedOrgCache{
+		Org:       "acme",
+		FetchedAt: time.Now().UTC(),
+		Repos: []TrustedRemoteRepo{
+			{Name: "service", FullName: "acme/service", URL: "https://github.com/acme/service"},
+			{Name: "worker", FullName: "acme/worker", URL: "https://github.com/acme/worker"},
+		},
+	}); err != nil {
+		t.Fatalf("saveTrustedOrgCache returned error: %v", err)
+	}
+
+	app := NewApp()
+	state, err := app.TrustedSummonPickerState(h.Workspace)
+	if err != nil {
+		t.Fatalf("TrustedSummonPickerState returned error: %v", err)
+	}
+
+	if len(state.Candidates) != 2 {
+		t.Fatalf("expected merged local+remote candidates, got %#v", state.Candidates)
+	}
+	if state.Candidates[0].Source != CompletionSourceLocal || state.Candidates[0].Value != "math-app" || state.Candidates[0].Slug != "acme/service" {
+		t.Fatalf("expected local candidate to win duplicate slug, got %#v", state.Candidates[0])
+	}
+	if state.Candidates[1].Source != CompletionSourceRemote || state.Candidates[1].Value != "acme/worker" {
+		t.Fatalf("expected remote-only candidate to use canonical slug, got %#v", state.Candidates[1])
+	}
+}
+
+func TestCompleteSummonRemainsLocalOnly(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setCompletionEnv(t, h)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(h.Root, "cache"))
+
+	if err := saveTrustedOrgCache(trustedOrgCache{
+		Org:       "acme",
+		FetchedAt: time.Now().UTC(),
+		Repos: []TrustedRemoteRepo{
+			{Name: "worker", FullName: "acme/worker", URL: "https://github.com/acme/worker"},
+		},
+	}); err != nil {
+		t.Fatalf("saveTrustedOrgCache returned error: %v", err)
+	}
+
+	trustedRepo := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(trustedRepo)
+	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	app := NewApp()
+	candidates, err := app.Complete(h.Workspace, "summon", "")
+	if err != nil {
+		t.Fatalf("Complete summon returned error: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].Value != "service" {
+		t.Fatalf("expected shell completion to stay local-only, got %#v", candidates)
 	}
 }
 

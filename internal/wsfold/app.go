@@ -7,6 +7,19 @@ import (
 	"path/filepath"
 )
 
+const (
+	ansiGreen      = "\x1b[32m"
+	ansiCyan       = "\x1b[36m"
+	ansiBold       = "\x1b[1m"
+	ansiYellow     = "\x1b[33m"
+	ansiRed        = "\x1b[31m"
+	ansiReset      = "\x1b[0m"
+	ansiGreenBold  = ansiGreen + ansiBold
+	ansiCyanBold   = ansiCyan + ansiBold
+	ansiYellowBold = ansiYellow + ansiBold
+	ansiRedBold    = ansiRed + ansiBold
+)
+
 type App struct {
 	Runner Runner
 	Stdout io.Writer
@@ -84,7 +97,7 @@ func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 		return err
 	}
 
-	repo, err := findOrCloneRepo(cfg, a.Runner, ref, requested)
+	repo, err := findOrCloneRepo(cfg, a.Runner, a.Stdout, ref, requested)
 	if err != nil {
 		return err
 	}
@@ -115,7 +128,7 @@ func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 		return err
 	}
 
-	_, _ = fmt.Fprintf(a.Stdout, "%s %s\n", requested, repo.DisplayRef())
+	_, _ = fmt.Fprintln(a.Stdout, formatSummonSuccess(requested, repo, entry, primaryRoot))
 	return nil
 }
 
@@ -158,6 +171,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 		return err
 	}
 
+	_, _ = fmt.Fprintln(a.Stdout, formatDismissSuccess(entry))
 	return nil
 }
 
@@ -189,6 +203,39 @@ func ensureTrustedSymlink(linkPath, target string) error {
 		return fmt.Errorf("create symlink %s -> %s: %w", linkPath, target, err)
 	}
 	return nil
+}
+
+func formatSummonSuccess(requested TrustClass, repo Repo, entry Entry, primaryRoot string) string {
+	check := ansiGreenBold + "✓" + ansiReset
+	repoRef := ansiCyanBold + repo.DisplayRef() + ansiReset
+
+	switch requested {
+	case TrustClassTrusted:
+		mountDisplay := entry.MountPath
+		if rel, err := filepath.Rel(primaryRoot, entry.MountPath); err == nil && rel != "" {
+			mountDisplay = rel
+		}
+		mountPath := ansiYellowBold + mountDisplay + ansiReset
+		return fmt.Sprintf("%s Trusted repository attached: %s at %s", check, repoRef, mountPath)
+	case TrustClassExternal:
+		return fmt.Sprintf("%s External repository added: %s", check, repoRef)
+	default:
+		return fmt.Sprintf("%s Repository added: %s", check, repoRef)
+	}
+}
+
+func formatDismissSuccess(entry Entry) string {
+	icon := ansiRedBold + "-" + ansiReset
+	repoRef := ansiCyanBold + entry.RepoRef + ansiReset
+
+	switch entry.TrustClass {
+	case TrustClassTrusted:
+		return fmt.Sprintf("%s Trusted repository removed: %s", icon, repoRef)
+	case TrustClassExternal:
+		return fmt.Sprintf("%s External repository removed: %s", icon, repoRef)
+	default:
+		return fmt.Sprintf("%s Repository removed: %s", icon, repoRef)
+	}
 }
 
 func removeTrustedSymlink(linkPath string) error {

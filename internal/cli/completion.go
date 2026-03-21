@@ -34,13 +34,7 @@ _wsfold() {
 
   local -a subcommands
   subcommands=(
-    'init:initialize the current directory as a workspace'
-    'summon:attach a trusted repository'
-    'reindex:refresh trusted remote cache'
-    'summon-untrusted:add an external repository as a workspace root'
-    'dismiss:remove a repository from the current composition'
-    'version:print build version metadata'
-    'completion:print shell completion setup'
+__WSFOLD_COMMANDS__
   )
 
   _arguments -C \
@@ -50,7 +44,7 @@ _wsfold() {
 
   case $state in
     command)
-      _describe -t commands 'wsfold commands' subcommands
+      _describe -V -t commands 'wsfold commands' subcommands
       return
       ;;
     repo)
@@ -78,8 +72,6 @@ _wsfold() {
     arg)
       if [[ "${words[2]}" == "completion" ]]; then
         _describe -t shells 'shells' 'zsh:generate zsh completion script'
-      elif [[ "${words[2]}" == "reindex" ]]; then
-        _describe -t targets 'reindex targets' 'trusted:refresh trusted GitHub cache'
       fi
       return
       ;;
@@ -89,14 +81,33 @@ _wsfold() {
 compdef _wsfold wsfold ./dist/wsfold ./wsfold
 `
 
+const zshCompletionSetupHelp = `Shell completion setup
+
+Current shell session:
+  eval "$(wsfold completion zsh)"
+
+Persist in your zsh profile:
+  echo 'eval "$(wsfold completion zsh)"' >> ~/.zshrc
+  exec zsh
+`
+
 func writeZshCompletion(w io.Writer) error {
-	_, err := io.WriteString(w, zshCompletionScript)
+	script := strings.Replace(zshCompletionScript, "__WSFOLD_COMMANDS__", zshCompletionCommandEntries(), 1)
+	_, err := io.WriteString(w, script)
+	return err
+}
+
+func writeCompletionSetupHelp(w io.Writer) error {
+	_, err := io.WriteString(w, zshCompletionSetupHelp)
 	return err
 }
 
 func writeCompletions(cwd string, args []string, stdout io.Writer) error {
+	if len(args) == 1 {
+		return writeCompletionSetupHelp(stdout)
+	}
 	if len(args) != 2 {
-		return fmt.Errorf("expected a shell name, got %d arguments", len(args)-1)
+		return fmt.Errorf("expected zero or one shell name, got %d arguments", len(args)-1)
 	}
 
 	switch args[1] {
@@ -129,4 +140,12 @@ func writeDynamicCompletions(cwd string, args []string, stdout io.Writer) error 
 	}
 
 	return nil
+}
+
+func zshCompletionCommandEntries() string {
+	lines := make([]string, 0, len(commandHelpEntries))
+	for _, entry := range commandHelpEntries {
+		lines = append(lines, fmt.Sprintf("    '%s:%s'", entry.Name, entry.Description))
+	}
+	return strings.Join(lines, "\n")
 }

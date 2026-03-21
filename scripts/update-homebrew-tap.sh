@@ -78,6 +78,25 @@ class Wsfold < Formula
 
   def install
     bin.install "wsfold"
+
+    (zsh_completion/"_wsfold").write Utils.safe_popen_read(bin/"wsfold", "completion", "zsh")
+  end
+
+  def caveats
+    <<~EOS
+      zsh completion has been installed to Homebrew's completion directory.
+
+      If your shell is already configured for Homebrew completions, nothing else is required.
+
+      Otherwise, you can enable wsfold completion manually:
+
+        eval "\$(wsfold completion zsh)"
+
+      To persist it in zsh:
+
+        echo 'eval "\$(wsfold completion zsh)"' >> ~/.zshrc
+        exec zsh
+    EOS
   end
 
   test do

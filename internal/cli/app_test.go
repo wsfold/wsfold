@@ -25,12 +25,91 @@ func TestRunHelp(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "Usage:") {
-		t.Fatalf("help output did not contain usage block: %q", stdout.String())
+	output := stdout.String()
+	if strings.Contains(output, "/\\_/\\\\") {
+		t.Fatalf("help output should not contain the decorative logo anymore: %q", output)
+	}
+	if strings.Contains(output, "\n  version ") {
+		t.Fatalf("help output should not surface version in the header anymore: %q", output)
+	}
+	if !strings.Contains(output, "WSFold") || !strings.Contains(output, "is a workspace manager for trusted and external repositories.") {
+		t.Fatalf("help output did not contain product definition: %q", output)
+	}
+	if !strings.Contains(output, "WSFold gives you a task-shaped alternative to a monorepo") {
+		t.Fatalf("help output did not contain refreshed intro copy: %q", output)
+	}
+	if !strings.Contains(output, "LLM agents get a targeted working context instead of the full repo universe, and humans see that") {
+		t.Fatalf("help output did not contain purpose paragraph tail: %q", output)
+	}
+	if !strings.Contains(output, "Usage:") {
+		t.Fatalf("help output did not contain usage block: %q", output)
+	}
+	if !strings.Contains(output, "Flags:") || !strings.Contains(output, "-h, --help") || !strings.Contains(output, "-v, --version") {
+		t.Fatalf("help output did not contain flags section: %q", output)
+	}
+	if !strings.Contains(output, "Environment:") || !strings.Contains(output, "WSFOLD_PROJECTS_DIR") || !strings.Contains(output, "default: _prj") {
+		t.Fatalf("help output did not contain environment section: %q", output)
+	}
+	if !strings.Contains(output, "Examples:") || !strings.Contains(output, `eval "$(wsfold completion zsh)"`) {
+		t.Fatalf("help output did not contain examples section: %q", output)
+	}
+
+	usageOrder := []string{
+		"wsfold summon [repo-ref]",
+		"wsfold summon-external [repo-ref]",
+		"wsfold dismiss [repo-ref]",
+		"wsfold init",
+		"wsfold reindex",
+		"wsfold completion zsh",
+		"wsfold --version",
+	}
+	lastIndex := -1
+	for _, snippet := range usageOrder {
+		index := strings.Index(output, snippet)
+		if index == -1 {
+			t.Fatalf("help output missing usage entry %q: %q", snippet, output)
+		}
+		if index <= lastIndex {
+			t.Fatalf("help usage order was incorrect around %q: %q", snippet, output)
+		}
+		lastIndex = index
+	}
+
+	commandOrder := []string{
+		"summon            attach a trusted repository to the workspace, local or remote",
+		"summon-external   add an external repository as a workspace root",
+		"dismiss           remove a repository from the current composition",
+		"init              initialize the current directory as a wsfold workspace",
+		"reindex           refresh the trusted GitHub remote cache",
+		"completion        print shell autocompletion setup",
+	}
+	lastIndex = -1
+	for _, snippet := range commandOrder {
+		index := strings.Index(output, snippet)
+		if index == -1 {
+			t.Fatalf("help output missing command entry %q: %q", snippet, output)
+		}
+		if index <= lastIndex {
+			t.Fatalf("help command order was incorrect around %q: %q", snippet, output)
+		}
+		lastIndex = index
 	}
 
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr output: %q", stderr.String())
+	}
+}
+
+func TestRunHelpSubcommandIsUnsupported(t *testing.T) {
+	t.Parallel()
+
+	err := Run([]string{"help"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("expected error for unsupported help subcommand")
+	}
+
+	if !strings.Contains(err.Error(), `unknown command "help"`) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -53,7 +132,27 @@ func TestRunVersion(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	err := Run([]string{"version"}, &stdout, &stderr)
+	err := Run([]string{"--version"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), "wsfold ") {
+		t.Fatalf("unexpected version output: %q", stdout.String())
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr output: %q", stderr.String())
+	}
+}
+
+func TestRunVersionShortFlag(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"-v"}, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -90,6 +189,38 @@ func TestRunCompletionZsh(t *testing.T) {
 	if !strings.Contains(stdout.String(), "compdef _wsfold wsfold") {
 		t.Fatalf("unexpected completion output: %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "init:initialize the current directory as a wsfold workspace") {
+		t.Fatalf("completion output did not contain aligned init description: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "reindex:refresh the trusted GitHub remote cache") {
+		t.Fatalf("completion output did not contain aligned reindex description: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "completion:print shell autocompletion setup") {
+		t.Fatalf("completion output did not contain aligned completion description: %q", stdout.String())
+	}
+
+	if stderr.Len() != 0 {
+		t.Fatalf("unexpected stderr output: %q", stderr.String())
+	}
+}
+
+func TestRunCompletionWithoutArgsPrintsSetupHelp(t *testing.T) {
+	t.Parallel()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	err := Run([]string{"completion"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), `eval "$(wsfold completion zsh)"`) {
+		t.Fatalf("expected eval setup command in completion help, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `>> ~/.zshrc`) {
+		t.Fatalf("expected profile setup command in completion help, got %q", stdout.String())
+	}
 
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr output: %q", stderr.String())
@@ -109,8 +240,9 @@ func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 		return []string{}, errPickerCancelled
 	}
 
-	refs, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &bytes.Buffer{}, &bytes.Buffer{})
-	if err != errPickerCancelled {
+	var stdout bytes.Buffer
+	refs, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon"}, &stdout, &bytes.Buffer{})
+	if err != nil {
 		t.Fatalf("unexpected resolveCommandRefs error: %v", err)
 	}
 	if !called {
@@ -118,6 +250,9 @@ func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 	}
 	if len(refs) != 0 {
 		t.Fatalf("expected no refs on picker cancellation, got %#v", refs)
+	}
+	if !strings.Contains(stdout.String(), "Selection cancelled") {
+		t.Fatalf("expected neutral cancellation message, got %q", stdout.String())
 	}
 }
 
@@ -128,6 +263,53 @@ func TestResolveCommandRefsAllowsExplicitRepoRef(t *testing.T) {
 	}
 	if len(refs) != 1 || refs[0] != "math-app" {
 		t.Fatalf("unexpected explicit repo refs: %#v", refs)
+	}
+}
+
+func TestResolveCommandRefsDismissWithoutCandidatesIsNoop(t *testing.T) {
+	h := testutil.NewHarness(t)
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+
+	app := wsfold.NewApp()
+	var stdout bytes.Buffer
+	refs, err := resolveCommandRefs(app, h.Workspace, "dismiss", []string{"dismiss"}, &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("resolveCommandRefs returned error: %v", err)
+	}
+	if len(refs) != 0 {
+		t.Fatalf("expected no refs for dismiss noop, got %#v", refs)
+	}
+	if !strings.Contains(stdout.String(), "Nothing to dismiss") {
+		t.Fatalf("expected friendly dismiss noop message, got %q", stdout.String())
+	}
+}
+
+func TestReconcileSelectionTreatsPickerCancellationAsNoop(t *testing.T) {
+	original := runPicker
+	t.Cleanup(func() { runPicker = original })
+
+	runPicker = func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error) {
+		return nil, errPickerCancelled
+	}
+
+	h := testutil.NewHarness(t)
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+
+	app := wsfold.NewApp()
+	var stdout bytes.Buffer
+	if err := reconcileSelection(app, h.Workspace, "summon-external", &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("reconcileSelection returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Selection cancelled") {
+		t.Fatalf("expected neutral cancellation message, got %q", stdout.String())
 	}
 }
 
@@ -154,7 +336,7 @@ func TestPlanSelectionChanges(t *testing.T) {
 	}
 }
 
-func TestRunReindexTrustedRefreshesCache(t *testing.T) {
+func TestRunReindexRefreshesCache(t *testing.T) {
 	h := testutil.NewHarness(t)
 	for _, env := range h.Env() {
 		key, value, _ := strings.Cut(env, "=")
@@ -179,7 +361,7 @@ exit 1
 	t.Setenv("PATH", filepath.Dir(ghPath))
 
 	var stdout bytes.Buffer
-	if err := Run([]string{"reindex", "trusted"}, &stdout, &bytes.Buffer{}); err != nil {
+	if err := Run([]string{"reindex"}, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "refreshed trusted index") {

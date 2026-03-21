@@ -1,13 +1,35 @@
 # WSFold
 
-WSFold is a local-first Go CLI for composing trusted and external Git repositories around one active workspace.
+WSFold is a workspace manager for trusted and external repositories.
 
-In v1 it supports:
+## Purpose
+
+WSFold gives you a task-shaped alternative to a monorepo: a lightweight, temporary composition
+of exactly the repositories you need for the work in front of you. Summon what matters, keep the
+context tight, and dismiss it again when the task is done.
+
+LLM agents get a targeted working context instead of the full repo universe, and humans see that
+same scope as a clear, visible workspace composition.
+
+It lets you summon a trusted repository that already exists locally or still lives on GitHub.
+Trusted remote repositories can be discovered and cloned automatically when needed. You can
+also dismiss repositories from the current workspace at any time.
+
+WSFold can add an external repository to the workspace so it is visible in editors and tools,
+including LLM-based workflows. When a workspace is initialized or updated, WSFold also maintains
+a `.code-workspace` file for Visual Studio Code.
+
+Trusted repositories may be linked directly into the workspace layout. External repositories are
+handled differently: they are added as workspace roots, but are not symlinked into the trusted
+workspace tree. This helps preserve clear trust boundaries for agents and tools that treat the
+workspace as trusted by default.
+
+Current commands:
 
 - `wsfold init` for initializing a workspace in the current directory
 - `wsfold summon [repo-ref]` for trusted repository attachment, with a remote-aware picker when no ref is provided
-- `wsfold reindex trusted` for refreshing the trusted GitHub remote cache
-- `wsfold summon-untrusted [repo-ref]` for external repository visibility without symlink embedding
+- `wsfold reindex` for refreshing the trusted GitHub remote cache
+- `wsfold summon-external [repo-ref]` for external repository visibility without symlink embedding
 - `wsfold dismiss [repo-ref]` for removing a repo from the current composition
 - deterministic `.wsfold/manifest.yaml` state
 - deterministic `<workspace-dirname>.code-workspace` generation for VS Code multi-root workspaces
@@ -24,8 +46,8 @@ After that, run commands from anywhere inside that workspace tree:
 
 ```bash
 wsfold summon acme/service
-wsfold reindex trusted
-wsfold summon-untrusted other/legacy-tool
+wsfold reindex
+wsfold summon-external other/legacy-tool
 wsfold dismiss acme/service
 ```
 
@@ -33,7 +55,7 @@ If you omit `repo-ref`, `wsfold` opens an interactive Bubble Tea picker with liv
 
 ```bash
 wsfold summon
-wsfold summon-untrusted
+wsfold summon-external
 wsfold dismiss
 ```
 
@@ -42,6 +64,7 @@ wsfold dismiss
 - always shows local trusted repos immediately
 - includes cached remote repos from `WSFOLD_TRUSTED_GITHUB_ORGS` when available
 - refreshes trusted remote metadata in the background with `gh` and live-updates the open picker
+- clones trusted remote repos with `gh repo clone`
 - keeps shell completion local-only by design
 
 Zsh completion:
@@ -53,7 +76,7 @@ eval "$(wsfold completion zsh)"
 This local completion currently suggests:
 
 - trusted local repos for `wsfold summon`
-- external local repos for `wsfold summon-untrusted`
+- external local repos for `wsfold summon-external`
 - repos already attached in the current workspace for `wsfold dismiss`
 
 `repo-ref` is slug-first:
@@ -62,7 +85,7 @@ This local completion currently suggests:
 - short repo name when the local repo index makes it unambiguous
 
 `summon` only works for repos classified as trusted.
-`summon-untrusted` only works for repos classified as external.
+`summon-external` only works for repos classified as external.
 
 ## Environment
 
@@ -80,9 +103,10 @@ Rules:
 - repos under `WSFOLD_EXTERNAL_DIR` are never symlinked into the workspace tree
 - missing GitHub repos from trusted orgs may clone into `WSFOLD_TRUSTED_DIR` via `wsfold summon`
 - `wsfold summon` without a ref reads cached trusted GitHub repos from the user cache directory and refreshes them with `gh`
-- `wsfold reindex trusted` performs a blocking refresh of the trusted GitHub cache
+- trusted remote summon clones use `gh repo clone`, following the user’s `gh` git protocol settings
+- `wsfold reindex` performs a blocking refresh of the trusted GitHub cache
 - run `gh auth login` to enable trusted remote refresh
-- `wsfold summon-untrusted` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`
+- `wsfold summon-external` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`
 - `WSFOLD_PROJECTS_DIR` optionally overrides the trusted mount directory name; default is `_prj`
 
 ## Generated Files

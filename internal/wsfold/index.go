@@ -3,6 +3,7 @@ package wsfold
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -200,7 +201,7 @@ func ambiguityError(ref string, candidates []Repo) error {
 	return fmt.Errorf("repo ref %q is ambiguous: %s", ref, strings.Join(lines, ", "))
 }
 
-func findOrCloneRepo(cfg Config, runner Runner, ref string, requested TrustClass) (Repo, error) {
+func findOrCloneRepo(cfg Config, runner Runner, progress io.Writer, ref string, requested TrustClass) (Repo, error) {
 	repo, err := resolveExistingRepo(cfg, runner, ref, requested)
 	if err == nil {
 		return repo, nil
@@ -217,24 +218,21 @@ func findOrCloneRepo(cfg Config, runner Runner, ref string, requested TrustClass
 	switch requested {
 	case TrustClassTrusted:
 		if classification != TrustClassTrusted {
-			return Repo{}, fmt.Errorf("repo ref %q is not classified as trusted; use summon-untrusted for local external repos only", ref)
+			return Repo{}, fmt.Errorf("repo ref %q is not classified as trusted; use summon-external for local external repos only", ref)
 		}
 	case TrustClassExternal:
 		if classification == TrustClassTrusted {
 			return Repo{}, fmt.Errorf("repo ref %q is classified as trusted; use summon", ref)
 		}
-		return Repo{}, fmt.Errorf("repo ref %q was not found locally under %s; summon-untrusted only supports local external repos", ref, cfg.ExternalDir)
+		return Repo{}, fmt.Errorf("repo ref %q was not found locally under %s; summon-external only supports local external repos", ref, cfg.ExternalDir)
 	default:
 		return Repo{}, fmt.Errorf("unsupported trust class %q", requested)
 	}
 
-	remoteURL, owner, name, err := remoteURLFromRef(ref)
+	destination, err := chooseTrustedRepoClonePath(cfg, runner, owner, name)
 	if err != nil {
 		return Repo{}, err
 	}
-
-	root := cfg.TrustedDir
-	destination := filepath.Join(root, owner, name)
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return Repo{}, fmt.Errorf("create clone parent: %w", err)
 	}
@@ -242,17 +240,99 @@ func findOrCloneRepo(cfg Config, runner Runner, ref string, requested TrustClass
 		return buildRepo(destination, requested, runner), nil
 	}
 
-	if _, err := runner.Git("", "clone", remoteURL, destination); err != nil {
-		return Repo{}, err
-	}
-	if _, err := runner.Git(destination, "remote", "set-url", "origin", remoteURL); err != nil {
+	if err := cloneTrustedGitHubRepo(runner, progress, owner, name, destination); err != nil {
 		return Repo{}, err
 	}
 
 	return buildRepo(destination, requested, runner), nil
 }
 
+func cloneTrustedGitHubRepo(runner Runner, progress io.Writer, owner string, name string, destination string) error {
+	probe := probeGitHubCLI(runner)
+	if !probe.Ready {
+		return fmt.Errorf("trusted remote clone requires GitHub CLI authentication; %s; run gh auth login", strings.TrimPrefix(probe.Message, "remote index unavailable: "))
+	}
+
+	if progress != nil {
+		repoRef := ansiCyanBold + owner+"/"+name + ansiReset
+		_, _ = fmt.Fprintf(progress, "%s Cloning repository: %s\n", ansiGreenBold+"→"+ansiReset, repoRef)
+	}
+
+	if err := runner.GitHubStreaming("", progress, progress, "repo", "clone", owner+"/"+name, destination, "--", "--progress"); err != nil {
+		return fmt.Errorf("trusted remote clone via gh repo clone failed: %w", err)
+	}
+	return nil
+}
+
+func chooseTrustedRepoClonePath(cfg Config, runner Runner, owner string, name string) (string, error) {
+	primary := filepath.Join(cfg.TrustedDir, strings.ToLower(strings.TrimSpace(name)))
+	ok, err := trustedClonePathAvailable(primary, owner, name, runner)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return primary, nil
+	}
+
+	fallback := filepath.Join(cfg.TrustedDir, trustedRepoFolderName(owner, name))
+	ok, err = trustedClonePathAvailable(fallback, owner, name, runner)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return fallback, nil
+	}
+
+	return "", fmt.Errorf("trusted repo %q cannot be cloned because both %q and %q are already used by other repositories", owner+"/"+name, primary, fallback)
+}
+
+func trustedRepoFolderName(owner string, name string) string {
+	return strings.ToLower(strings.TrimSpace(name)) + "-" + strings.ToLower(strings.TrimSpace(owner))
+}
+
+func trustedClonePathAvailable(path string, owner string, name string, runner Runner) (bool, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("stat trusted clone path %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return false, nil
+	}
+	if !isGitRepo(path) {
+		return false, nil
+	}
+
+	repo := hydrateRepo(buildRepoWithoutOrigin(path, TrustClassTrusted), runner)
+	return repo.Slug == owner+"/"+name, nil
+}
+
 func resolveExistingRepo(cfg Config, runner Runner, ref string, requested TrustClass) (Repo, error) {
+	if owner, name, ok := parseGitHubSlug(ref); ok {
+		candidates, err := discoverReposBySlug(cfg, runner, owner+"/"+name)
+		if err != nil {
+			return Repo{}, err
+		}
+		if len(candidates) == 0 {
+			return Repo{}, os.ErrNotExist
+		}
+
+		filtered := filterByTrust(candidates, requested)
+		if len(filtered) == 1 {
+			return filtered[0], nil
+		}
+		if len(filtered) > 1 {
+			return Repo{}, ambiguityError(ref, filtered)
+		}
+		if len(candidates) == 1 {
+			return candidates[0], nil
+		}
+
+		return Repo{}, ambiguityError(ref, candidates)
+	}
+
 	directRepos, err := discoverDirectRepos(cfg, requested)
 	if err != nil {
 		return Repo{}, err
@@ -267,32 +347,7 @@ func resolveExistingRepo(cfg Config, runner Runner, ref string, requested TrustC
 		return Repo{}, err
 	}
 
-	owner, name, ok := parseGitHubSlug(ref)
-	if !ok {
-		return Repo{}, os.ErrNotExist
-	}
-
-	candidates, err := discoverSlugCandidates(cfg, runner, owner, name)
-	if err != nil {
-		return Repo{}, err
-	}
-
-	if len(candidates) == 0 {
-		return Repo{}, os.ErrNotExist
-	}
-
-	filtered := filterByTrust(candidates, requested)
-	if len(filtered) == 1 {
-		return filtered[0], nil
-	}
-	if len(filtered) > 1 {
-		return Repo{}, ambiguityError(ref, filtered)
-	}
-	if len(candidates) == 1 {
-		return candidates[0], nil
-	}
-
-	return Repo{}, ambiguityError(ref, candidates)
+	return Repo{}, os.ErrNotExist
 }
 
 func discoverDirectRepos(cfg Config, requested TrustClass) ([]Repo, error) {
@@ -334,22 +389,31 @@ func discoverDirectReposUnderRoot(root string, trustClass TrustClass) ([]Repo, e
 	return repos, nil
 }
 
-func discoverSlugCandidates(cfg Config, runner Runner, owner string, name string) ([]Repo, error) {
-	paths := []struct {
-		path       string
-		trustClass TrustClass
-	}{
-		{path: filepath.Join(cfg.TrustedDir, owner, name), trustClass: TrustClassTrusted},
-		{path: filepath.Join(cfg.ExternalDir, owner, name), trustClass: TrustClassExternal},
+func discoverReposBySlug(cfg Config, runner Runner, slug string) ([]Repo, error) {
+	slug = strings.ToLower(strings.TrimSpace(slug))
+	candidates := make([]Repo, 0)
+
+	repos, err := discoverDirectReposUnderRoot(cfg.TrustedDir, TrustClassTrusted)
+	if err != nil {
+		return nil, err
+	}
+	for _, repo := range repos {
+		hydrated := hydrateRepo(repo, runner)
+		if hydrated.Slug == slug {
+			candidates = append(candidates, hydrated)
+		}
 	}
 
-	candidates := make([]Repo, 0, len(paths))
-	for _, candidate := range paths {
-		if !isGitRepo(candidate.path) {
-			continue
+	if owner, name, ok := splitSlug(slug); ok {
+		externalPath := filepath.Join(cfg.ExternalDir, owner, name)
+		if isGitRepo(externalPath) {
+			hydrated := hydrateRepo(buildRepoWithoutOrigin(externalPath, TrustClassExternal), runner)
+			if hydrated.Slug == slug {
+				candidates = append(candidates, hydrated)
+			}
 		}
-		candidates = append(candidates, hydrateRepo(buildRepoWithoutOrigin(candidate.path, candidate.trustClass), runner))
 	}
+
 	return candidates, nil
 }
 

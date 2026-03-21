@@ -27,7 +27,7 @@ func (a *App) Complete(cwd string, command string, prefix string) ([]CompletionC
 	switch command {
 	case "summon":
 		return a.completeRepoIndex(cwd, prefix, TrustClassTrusted)
-	case "summon-untrusted":
+	case "summon-external":
 		return a.completeRepoIndex(cwd, prefix, TrustClassExternal)
 	case "dismiss":
 		return a.completeManifest(cwd, prefix)

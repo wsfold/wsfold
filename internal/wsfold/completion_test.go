@@ -33,9 +33,9 @@ func TestCompleteTrustedAndExternalRepos(t *testing.T) {
 		t.Fatalf("expected origin slug in trusted description, got %#v", candidates[0])
 	}
 
-	candidates, err = app.Complete(h.Workspace, "summon-untrusted", "leg")
+	candidates, err = app.Complete(h.Workspace, "summon-external", "leg")
 	if err != nil {
-		t.Fatalf("Complete summon-untrusted returned error: %v", err)
+		t.Fatalf("Complete summon-external returned error: %v", err)
 	}
 	if len(candidates) != 1 || candidates[0].Value != "legacy-tool" {
 		t.Fatalf("unexpected external completion candidates: %#v", candidates)
@@ -52,7 +52,12 @@ func TestCompleteMarksAlreadyAttachedRepos(t *testing.T) {
 	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "service"); err != nil {
 		t.Fatalf("Summon returned error: %v", err)
@@ -80,7 +85,12 @@ func TestCompleteDismissFromManifest(t *testing.T) {
 	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/other/legacy-tool.git")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "acme/service"); err != nil {
 		t.Fatalf("Summon returned error: %v", err)

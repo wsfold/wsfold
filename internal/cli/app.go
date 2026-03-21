@@ -9,34 +9,18 @@ import (
 	"github.com/openclaw/wsfold/internal/wsfold"
 )
 
-const helpText = `wsfold composes trusted and external repositories around the current workspace.
-
-Usage:
-  wsfold init
-  wsfold summon [repo-ref]
-  wsfold reindex trusted
-  wsfold summon-untrusted [repo-ref]
-  wsfold dismiss [repo-ref]
-  wsfold version
-  wsfold completion zsh
-
-Commands:
-  init              initialize the current directory as a wsfold workspace
-  summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj}; picker mode also shows cached trusted GitHub repos
-  reindex trusted   refresh the trusted GitHub remote cache
-  summon-untrusted  add an external repository as a workspace root only
-  dismiss           remove a repository from the current composition
-  version           print build version metadata
-  completion        print shell completion setup
-`
+const (
+	ansiYellow = "\x1b[33m"
+	ansiBold   = "\x1b[1m"
+	ansiReset  = "\x1b[0m"
+)
 
 func Run(args []string, stdout, stderr io.Writer) error {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		_, err := io.WriteString(stdout, helpText)
-		return err
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+		return writeHelp(stdout)
 	}
 
-	if args[0] == "--version" || args[0] == "version" {
+	if args[0] == "--version" || args[0] == "-v" {
 		_, err := fmt.Fprintf(stdout, "wsfold %s (commit %s, built %s)\n", buildinfo.Version, buildinfo.Commit, buildinfo.Date)
 		return err
 	}
@@ -66,8 +50,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if args[0] == "reindex" {
-		if len(args) != 2 || args[1] != "trusted" {
-			return fmt.Errorf("usage: wsfold reindex trusted")
+		if len(args) != 1 {
+			return fmt.Errorf("usage: wsfold reindex")
 		}
 		return app.ReindexTrusted()
 	}
@@ -87,11 +71,11 @@ func Run(args []string, stdout, stderr io.Writer) error {
 			}
 		}
 		return nil
-	case "summon-untrusted":
+	case "summon-external":
 		if len(args) == 1 {
-			return reconcileSelection(app, cwd, "summon-untrusted", stdout, stderr)
+			return reconcileSelection(app, cwd, "summon-external", stdout, stderr)
 		}
-		refs, err := resolveCommandRefs(app, cwd, "summon-untrusted", args, stdout, stderr)
+		refs, err := resolveCommandRefs(app, cwd, "summon-external", args, stdout, stderr)
 		if err != nil {
 			return err
 		}
@@ -120,7 +104,22 @@ func Run(args []string, stdout, stderr io.Writer) error {
 func resolveCommandRefs(app *wsfold.App, cwd string, command string, args []string, stdout io.Writer, stderr io.Writer) ([]string, error) {
 	switch len(args) {
 	case 1:
-		return runPicker(app, cwd, command, stdout, stderr)
+		if command == "dismiss" {
+			candidates, err := app.Complete(cwd, command, "")
+			if err != nil {
+				return nil, err
+			}
+			if len(candidates) == 0 {
+				_, _ = fmt.Fprintf(stdout, "%s·%s Nothing to dismiss\n", ansiYellow+ansiBold, ansiReset)
+				return nil, nil
+			}
+		}
+		refs, err := runPicker(app, cwd, command, stdout, stderr)
+		if err == errPickerCancelled {
+			_, _ = fmt.Fprintf(stdout, "%s·%s Selection cancelled\n", ansiYellow+ansiBold, ansiReset)
+			return nil, nil
+		}
+		return refs, err
 	case 2:
 		return []string{args[1]}, nil
 	default:
@@ -147,6 +146,10 @@ func reconcileSelection(app *wsfold.App, cwd string, command string, stdout io.W
 	}
 
 	selected, err := runPicker(app, cwd, command, stdout, stderr)
+	if err == errPickerCancelled {
+		_, _ = fmt.Fprintf(stdout, "%s·%s Selection cancelled\n", ansiYellow+ansiBold, ansiReset)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -164,7 +167,7 @@ func reconcileSelection(app *wsfold.App, cwd string, command string, stdout io.W
 			if err := app.Summon(cwd, ref); err != nil {
 				return err
 			}
-		case "summon-untrusted":
+		case "summon-external":
 			if err := app.SummonUntrusted(cwd, ref); err != nil {
 				return err
 			}

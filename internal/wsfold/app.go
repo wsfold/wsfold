@@ -84,7 +84,7 @@ func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 		return err
 	}
 
-	repo, err := findOrCloneRepo(cfg, a.Runner, ref, requested)
+	repo, err := findOrCloneRepo(cfg, a.Runner, a.Stdout, ref, requested)
 	if err != nil {
 		return err
 	}

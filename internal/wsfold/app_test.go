@@ -83,7 +83,7 @@ func TestSummonMissingTrustedRepoClones(t *testing.T) {
 		t.Fatalf("Summon returned error: %v", err)
 	}
 
-	cloned := filepath.Join(h.TrustedRoot, "acme", "service")
+	cloned := filepath.Join(h.TrustedRoot, "service")
 	if _, err := os.Stat(filepath.Join(cloned, ".git")); err != nil {
 		t.Fatalf("expected clone at %s: %v", cloned, err)
 	}
@@ -203,7 +203,7 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 		t.Fatalf("SummonUntrusted returned error: %v", err)
 	}
 
-	trustedClone := filepath.Join(h.TrustedRoot, "acme", "service")
+	trustedClone := filepath.Join(h.TrustedRoot, "service")
 	trustedLink := filepath.Join(h.Workspace, "_prj", "service")
 
 	if err := app.Dismiss(h.Workspace, "service"); err != nil {
@@ -399,7 +399,7 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 		t.Fatalf("Dismiss returned error: %v", err)
 	}
 
-	trustedClone := filepath.Join(h.TrustedRoot, "acme", "service")
+	trustedClone := filepath.Join(h.TrustedRoot, "service")
 	if _, err := os.Stat(trustedClone); err != nil {
 		t.Fatalf("trusted clone missing after smoke flow: %v", err)
 	}

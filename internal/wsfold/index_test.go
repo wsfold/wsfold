@@ -177,8 +177,14 @@ func TestFindOrCloneRepoClonesIntoExpectedRoot(t *testing.T) {
 	if !strings.Contains(origin, "acme/service.git") {
 		t.Fatalf("expected origin to be configured by gh clone, got %q", origin)
 	}
-	if !strings.Contains(stdout.String(), "cloning trusted repo acme/service") {
+	if !strings.Contains(stdout.String(), "Cloning repository:") {
+		t.Fatalf("expected clone progress heading, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "acme/service") {
 		t.Fatalf("expected clone progress output, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "gh cloning acme/service") {
+		t.Fatalf("expected streamed gh clone output, got %q", stdout.String())
 	}
 }
 
@@ -371,6 +377,7 @@ if [ "$1" = "repo" ] && [ "$2" = "clone" ]; then
   owner="${slug%%/*}"
   repo="${slug##*/}"
   remote="${WSFOLD_TEST_REMOTES_ROOT}/${owner}/${repo}.git"
+  echo "gh cloning $slug into $destination" >&2
   exec git clone "file://$remote" "$destination"
 fi
 echo "unexpected gh invocation: $*" >&2

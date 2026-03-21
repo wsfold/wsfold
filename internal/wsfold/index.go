@@ -254,10 +254,11 @@ func cloneTrustedGitHubRepo(runner Runner, progress io.Writer, owner string, nam
 	}
 
 	if progress != nil {
-		_, _ = fmt.Fprintf(progress, "cloning trusted repo %s into %s\n", owner+"/"+name, destination)
+		repoRef := ansiCyanBold + owner+"/"+name + ansiReset
+		_, _ = fmt.Fprintf(progress, "%s Cloning repository: %s\n", ansiGreenBold+"→"+ansiReset, repoRef)
 	}
 
-	if _, err := runner.GitHub("", "repo", "clone", owner+"/"+name, destination); err != nil {
+	if err := runner.GitHubStreaming("", progress, progress, "repo", "clone", owner+"/"+name, destination, "--", "--progress"); err != nil {
 		return fmt.Errorf("trusted remote clone via gh repo clone failed: %w", err)
 	}
 	return nil

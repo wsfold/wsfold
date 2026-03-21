@@ -3,6 +3,7 @@ package wsfold
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,10 @@ func (r Runner) Git(dir string, args ...string) (string, error) {
 
 func (r Runner) GitHub(dir string, args ...string) (string, error) {
 	return r.run("gh", dir, args...)
+}
+
+func (r Runner) GitHubStreaming(dir string, stdout io.Writer, stderr io.Writer, args ...string) error {
+	return r.runStreaming("gh", dir, stdout, stderr, args...)
 }
 
 func (r Runner) HasCommand(name string) bool {
@@ -62,6 +67,40 @@ func (r Runner) run(name string, dir string, args ...string) (string, error) {
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+func (r Runner) runStreaming(name string, dir string, stdout io.Writer, stderr io.Writer, args ...string) error {
+	if r.ExecCommand != nil {
+		output, err := r.ExecCommand(name, dir, r.env(), args...)
+		if output != "" && stdout != nil {
+			_, _ = io.WriteString(stdout, output)
+		}
+		return err
+	}
+
+	resolvedName := name
+	if located, err := r.lookupPath(name); err == nil {
+		resolvedName = located
+	}
+
+	cmd := exec.Command(resolvedName, args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	if env := r.env(); len(env) > 0 {
+		cmd.Env = env
+	}
+	if stdout != nil {
+		cmd.Stdout = stdout
+	}
+	if stderr != nil {
+		cmd.Stderr = stderr
+	}
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s %s failed: %w", name, strings.Join(args, " "), err)
+	}
+	return nil
 }
 
 func (r Runner) env() []string {

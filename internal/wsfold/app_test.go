@@ -260,6 +260,74 @@ func TestDismissAfterManualSymlinkRemoval(t *testing.T) {
 	}
 }
 
+func TestSummonReplacesStaleMountResidueDirectory(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	repoPath := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(repoPath)
+	h.RunGit(repoPath, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	staleMount := filepath.Join(h.Workspace, "_prj", "service", ".git", "gk")
+	if err := os.MkdirAll(staleMount, 0o755); err != nil {
+		t.Fatalf("mkdir stale mount residue: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(staleMount, "config"), []byte("ghost"), 0o644); err != nil {
+		t.Fatalf("write stale mount residue file: %v", err)
+	}
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error with stale residue: %v", err)
+	}
+
+	link := filepath.Join(h.Workspace, "_prj", "service")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("expected stale residue to be replaced with symlink: %v", err)
+	}
+	if target != repoPath {
+		t.Fatalf("unexpected symlink target after residue replacement: %s", target)
+	}
+}
+
+func TestDismissRemovesStaleMountResidueDirectory(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+	h.CreateGitHubRemote("acme", "service")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Summon(h.Workspace, "acme/service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+
+	link := filepath.Join(h.Workspace, "_prj", "service")
+	if err := os.Remove(link); err != nil {
+		t.Fatalf("remove symlink: %v", err)
+	}
+	staleMount := filepath.Join(link, ".git", "gk")
+	if err := os.MkdirAll(staleMount, 0o755); err != nil {
+		t.Fatalf("mkdir stale mount residue: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(staleMount, "config"), []byte("ghost"), 0o644); err != nil {
+		t.Fatalf("write stale mount residue file: %v", err)
+	}
+
+	if err := app.Dismiss(h.Workspace, "acme/service"); err != nil {
+		t.Fatalf("Dismiss returned error with stale residue: %v", err)
+	}
+
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("expected stale mount residue to be removed, got %v", err)
+	}
+}
+
 func TestEndToEndSmokeScenario(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)

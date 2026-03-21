@@ -153,10 +153,18 @@ func ensureTrustedSymlink(linkPath, target string) error {
 
 	if info, err := os.Lstat(linkPath); err == nil {
 		if info.Mode()&os.ModeSymlink == 0 {
-			return fmt.Errorf("mount path %s already exists and is not a symlink", linkPath)
-		}
-		if err := os.Remove(linkPath); err != nil {
-			return fmt.Errorf("replace symlink %s: %w", linkPath, err)
+			if removable, checkErr := isRemovableMountResidue(linkPath); checkErr != nil {
+				return fmt.Errorf("inspect mount residue %s: %w", linkPath, checkErr)
+			} else if !removable {
+				return fmt.Errorf("mount path %s already exists and is not a symlink", linkPath)
+			}
+			if err := os.RemoveAll(linkPath); err != nil {
+				return fmt.Errorf("remove stale mount residue %s: %w", linkPath, err)
+			}
+		} else {
+			if err := os.Remove(linkPath); err != nil {
+				return fmt.Errorf("replace symlink %s: %w", linkPath, err)
+			}
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("stat mount path %s: %w", linkPath, err)
@@ -169,14 +177,92 @@ func ensureTrustedSymlink(linkPath, target string) error {
 }
 
 func removeTrustedSymlink(linkPath string) error {
-	if _, err := os.Lstat(linkPath); err != nil {
+	info, err := os.Lstat(linkPath)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 		return fmt.Errorf("stat symlink %s: %w", linkPath, err)
 	}
-	if err := os.Remove(linkPath); err != nil {
-		return fmt.Errorf("remove symlink %s: %w", linkPath, err)
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(linkPath); err != nil {
+			return fmt.Errorf("remove symlink %s: %w", linkPath, err)
+		}
+		return nil
+	}
+
+	removable, err := isRemovableMountResidue(linkPath)
+	if err != nil {
+		return fmt.Errorf("inspect mount residue %s: %w", linkPath, err)
+	}
+	if !removable {
+		return fmt.Errorf("mount path %s exists but is not a removable symlink residue", linkPath)
+	}
+	if err := os.RemoveAll(linkPath); err != nil {
+		return fmt.Errorf("remove stale mount residue %s: %w", linkPath, err)
 	}
 	return nil
+}
+
+func isRemovableMountResidue(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, nil
+	}
+
+	expected := []string{
+		".git",
+		filepath.Join(".git", "gk"),
+		filepath.Join(".git", "gk", "config"),
+	}
+
+	for _, rel := range expected {
+		info, err := os.Lstat(filepath.Join(path, rel))
+		if err != nil {
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		if rel == filepath.Join(".git", "gk", "config") {
+			if info.IsDir() {
+				return false, nil
+			}
+		} else if !info.IsDir() {
+			return false, nil
+		}
+	}
+
+	allowed := map[string]struct{}{
+		".git":                                {},
+		filepath.Join(".git", "gk"):           {},
+		filepath.Join(".git", "gk", "config"): {},
+	}
+
+	valid := true
+	err = filepath.WalkDir(path, func(current string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if current == path {
+			return nil
+		}
+		rel, relErr := filepath.Rel(path, current)
+		if relErr != nil {
+			return relErr
+		}
+		if _, ok := allowed[rel]; !ok {
+			valid = false
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if err != nil {
+		return false, nil
+	}
+	return valid, nil
 }

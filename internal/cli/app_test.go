@@ -25,12 +25,91 @@ func TestRunHelp(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "Usage:") {
-		t.Fatalf("help output did not contain usage block: %q", stdout.String())
+	output := stdout.String()
+	if strings.Contains(output, "/\\_/\\\\") {
+		t.Fatalf("help output should not contain the decorative logo anymore: %q", output)
+	}
+	if strings.Contains(output, "\n  version ") {
+		t.Fatalf("help output should not surface version in the header anymore: %q", output)
+	}
+	if !strings.Contains(output, "WSFold") || !strings.Contains(output, "is a workspace manager for trusted and external repositories.") {
+		t.Fatalf("help output did not contain product definition: %q", output)
+	}
+	if !strings.Contains(output, "WSFold gives you a task-shaped alternative to a monorepo") {
+		t.Fatalf("help output did not contain refreshed intro copy: %q", output)
+	}
+	if !strings.Contains(output, "LLM agents get a targeted working context instead of the full repo universe, and humans see that") {
+		t.Fatalf("help output did not contain purpose paragraph tail: %q", output)
+	}
+	if !strings.Contains(output, "Usage:") {
+		t.Fatalf("help output did not contain usage block: %q", output)
+	}
+	if !strings.Contains(output, "Flags:") || !strings.Contains(output, "-h, --help") || !strings.Contains(output, "-v, --version") {
+		t.Fatalf("help output did not contain flags section: %q", output)
+	}
+	if !strings.Contains(output, "Environment:") || !strings.Contains(output, "WSFOLD_PROJECTS_DIR") || !strings.Contains(output, "default: _prj") {
+		t.Fatalf("help output did not contain environment section: %q", output)
+	}
+	if !strings.Contains(output, "Examples:") || !strings.Contains(output, `eval "$(wsfold completion zsh)"`) {
+		t.Fatalf("help output did not contain examples section: %q", output)
+	}
+
+	usageOrder := []string{
+		"wsfold summon [repo-ref]",
+		"wsfold summon-external [repo-ref]",
+		"wsfold dismiss [repo-ref]",
+		"wsfold init",
+		"wsfold reindex",
+		"wsfold completion zsh",
+		"wsfold --version",
+	}
+	lastIndex := -1
+	for _, snippet := range usageOrder {
+		index := strings.Index(output, snippet)
+		if index == -1 {
+			t.Fatalf("help output missing usage entry %q: %q", snippet, output)
+		}
+		if index <= lastIndex {
+			t.Fatalf("help usage order was incorrect around %q: %q", snippet, output)
+		}
+		lastIndex = index
+	}
+
+	commandOrder := []string{
+		"summon            attach a trusted repository to the workspace, local or remote",
+		"summon-external   add an external repository as a workspace root",
+		"dismiss           remove a repository from the current composition",
+		"init              initialize the current directory as a wsfold workspace",
+		"reindex           refresh the trusted GitHub remote cache",
+		"completion        print shell autocompletion setup",
+	}
+	lastIndex = -1
+	for _, snippet := range commandOrder {
+		index := strings.Index(output, snippet)
+		if index == -1 {
+			t.Fatalf("help output missing command entry %q: %q", snippet, output)
+		}
+		if index <= lastIndex {
+			t.Fatalf("help command order was incorrect around %q: %q", snippet, output)
+		}
+		lastIndex = index
 	}
 
 	if stderr.Len() != 0 {
 		t.Fatalf("unexpected stderr output: %q", stderr.String())
+	}
+}
+
+func TestRunHelpSubcommandIsUnsupported(t *testing.T) {
+	t.Parallel()
+
+	err := Run([]string{"help"}, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("expected error for unsupported help subcommand")
+	}
+
+	if !strings.Contains(err.Error(), `unknown command "help"`) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -109,6 +188,15 @@ func TestRunCompletionZsh(t *testing.T) {
 
 	if !strings.Contains(stdout.String(), "compdef _wsfold wsfold") {
 		t.Fatalf("unexpected completion output: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "init:initialize the current directory as a wsfold workspace") {
+		t.Fatalf("completion output did not contain aligned init description: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "reindex:refresh the trusted GitHub remote cache") {
+		t.Fatalf("completion output did not contain aligned reindex description: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "completion:print shell autocompletion setup") {
+		t.Fatalf("completion output did not contain aligned completion description: %q", stdout.String())
 	}
 
 	if stderr.Len() != 0 {

@@ -1,8 +1,30 @@
 # WSFold
 
-WSFold is a local-first Go CLI for composing trusted and external Git repositories around one active workspace.
+WSFold is a workspace manager for trusted and external repositories.
 
-In v1 it supports:
+## Purpose
+
+WSFold gives you a task-shaped alternative to a monorepo: a lightweight, temporary composition
+of exactly the repositories you need for the work in front of you. Summon what matters, keep the
+context tight, and dismiss it again when the task is done.
+
+LLM agents get a targeted working context instead of the full repo universe, and humans see that
+same scope as a clear, visible workspace composition.
+
+It lets you summon a trusted repository that already exists locally or still lives on GitHub.
+Trusted remote repositories can be discovered and cloned automatically when needed. You can
+also dismiss repositories from the current workspace at any time.
+
+WSFold can add an external repository to the workspace so it is visible in editors and tools,
+including LLM-based workflows. When a workspace is initialized or updated, WSFold also maintains
+a `.code-workspace` file for Visual Studio Code.
+
+Trusted repositories may be linked directly into the workspace layout. External repositories are
+handled differently: they are added as workspace roots, but are not symlinked into the trusted
+workspace tree. This helps preserve clear trust boundaries for agents and tools that treat the
+workspace as trusted by default.
+
+Current commands:
 
 - `wsfold init` for initializing a workspace in the current directory
 - `wsfold summon [repo-ref]` for trusted repository attachment, with a remote-aware picker when no ref is provided

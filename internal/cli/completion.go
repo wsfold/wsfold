@@ -34,12 +34,7 @@ _wsfold() {
 
   local -a subcommands
   subcommands=(
-    'summon:attach a trusted repository to the workspace, local or remote'
-    'summon-external:add an external repository as a workspace root'
-    'dismiss:remove a repository from the current composition'
-    'init:initialize the current directory as a workspace'
-    'reindex:refresh trusted remote cache'
-    'completion:print shell completion setup'
+__WSFOLD_COMMANDS__
   )
 
   _arguments -C \
@@ -97,7 +92,8 @@ Persist in your zsh profile:
 `
 
 func writeZshCompletion(w io.Writer) error {
-	_, err := io.WriteString(w, zshCompletionScript)
+	script := strings.Replace(zshCompletionScript, "__WSFOLD_COMMANDS__", zshCompletionCommandEntries(), 1)
+	_, err := io.WriteString(w, script)
 	return err
 }
 
@@ -144,4 +140,12 @@ func writeDynamicCompletions(cwd string, args []string, stdout io.Writer) error 
 	}
 
 	return nil
+}
+
+func zshCompletionCommandEntries() string {
+	lines := make([]string, 0, len(commandHelpEntries))
+	for _, entry := range commandHelpEntries {
+		lines = append(lines, fmt.Sprintf("    '%s:%s'", entry.Name, entry.Description))
+	}
+	return strings.Join(lines, "\n")
 }

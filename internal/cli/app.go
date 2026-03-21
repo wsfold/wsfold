@@ -15,30 +15,9 @@ const (
 	ansiReset  = "\x1b[0m"
 )
 
-const helpText = `wsfold composes trusted and external repositories around the current workspace.
-
-Usage:
-  wsfold init
-  wsfold summon [repo-ref]
-  wsfold reindex
-  wsfold summon-external [repo-ref]
-  wsfold dismiss [repo-ref]
-  wsfold --version
-  wsfold completion zsh
-
-Commands:
-  summon            attach a trusted repository to the workspace, local or remote
-  summon-external   add an external repository as a workspace root
-  dismiss           remove a repository from the current composition
-  init              initialize the current directory as a wsfold workspace
-  reindex           refresh the trusted GitHub remote cache
-  completion        print shell autocompletion setup
-`
-
 func Run(args []string, stdout, stderr io.Writer) error {
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		_, err := io.WriteString(stdout, helpText)
-		return err
+	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
+		return writeHelp(stdout)
 	}
 
 	if args[0] == "--version" || args[0] == "-v" {

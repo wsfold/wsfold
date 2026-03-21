@@ -11,13 +11,10 @@ import (
 	"github.com/openclaw/wsfold/internal/testutil"
 )
 
-func TestDiscoverRepositoriesFindsNestedAndFlatLayouts(t *testing.T) {
+func TestDiscoverRepositoriesFindsFlatLayouts(t *testing.T) {
 	h := testutil.NewHarness(t)
 
-	trustedRepo := filepath.Join(h.TrustedRoot, "acme", "service")
-	if err := os.MkdirAll(filepath.Dir(trustedRepo), 0o755); err != nil {
-		t.Fatalf("mkdir trusted repo parent: %v", err)
-	}
+	trustedRepo := filepath.Join(h.TrustedRoot, "service")
 	h.InitRepo(trustedRepo)
 	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
 
@@ -61,10 +58,7 @@ func TestDiscoverRepositoriesSkipsHiddenDirectories(t *testing.T) {
 
 	h := testutil.NewHarness(t)
 
-	visibleRepo := filepath.Join(h.TrustedRoot, "acme", "service")
-	if err := os.MkdirAll(filepath.Dir(visibleRepo), 0o755); err != nil {
-		t.Fatalf("mkdir visible repo parent: %v", err)
-	}
+	visibleRepo := filepath.Join(h.TrustedRoot, "service")
 	h.InitRepo(visibleRepo)
 
 	hiddenRepo := filepath.Join(h.TrustedRoot, ".cache", "ignored")

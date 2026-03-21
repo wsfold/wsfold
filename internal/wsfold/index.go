@@ -392,23 +392,27 @@ func discoverReposBySlug(cfg Config, runner Runner, slug string) ([]Repo, error)
 	slug = strings.ToLower(strings.TrimSpace(slug))
 	candidates := make([]Repo, 0)
 
-	for _, rootWithTrust := range []struct {
-		root       string
-		trustClass TrustClass
-	}{
-		{root: cfg.TrustedDir, trustClass: TrustClassTrusted},
-		{root: cfg.ExternalDir, trustClass: TrustClassExternal},
-	} {
-		repos, err := discoverReposUnderRoot(rootWithTrust.root, rootWithTrust.trustClass, runner)
-		if err != nil {
-			return nil, err
+	repos, err := discoverDirectReposUnderRoot(cfg.TrustedDir, TrustClassTrusted)
+	if err != nil {
+		return nil, err
+	}
+	for _, repo := range repos {
+		hydrated := hydrateRepo(repo, runner)
+		if hydrated.Slug == slug {
+			candidates = append(candidates, hydrated)
 		}
-		for _, repo := range repos {
-			if repo.Slug == slug {
-				candidates = append(candidates, repo)
+	}
+
+	if owner, name, ok := splitSlug(slug); ok {
+		externalPath := filepath.Join(cfg.ExternalDir, owner, name)
+		if isGitRepo(externalPath) {
+			hydrated := hydrateRepo(buildRepoWithoutOrigin(externalPath, TrustClassExternal), runner)
+			if hydrated.Slug == slug {
+				candidates = append(candidates, hydrated)
 			}
 		}
 	}
+
 	return candidates, nil
 }
 

@@ -412,7 +412,7 @@ func (m pickerModel) View() string {
 					selectMarker = markerStyle.Render("●")
 				}
 			}
-			render := renderPickerRow(item, selectMarker, nameWidth, sourceWidth, localStyle, remoteStyle, slugStyle, descStyle)
+			render := renderPickerRow(item, selectMarker, nameWidth, sourceWidth, localStyle, remoteStyle, slugStyle, descStyle, i == m.cursor)
 			if i == m.cursor {
 				prefix = "> "
 				render = selectedStyle.Render(render)
@@ -453,9 +453,9 @@ func (m pickerModel) selectedValues() []string {
 
 func (m pickerModel) hintText() string {
 	if m.multiSelect {
-		return "Space toggle, Enter apply, PgUp/PgDn (Fn+Up/Fn+Down) scroll, Esc cancel, type to fuzzy filter"
+		return "Space toggle, Enter apply, Esc cancel"
 	}
-	return "Enter select, Space enable multi-select, PgUp/PgDn (Fn+Up/Fn+Down) scroll, Esc cancel, type to fuzzy filter"
+	return "Enter select, Space multi-select, Esc cancel"
 }
 
 func pickerTitle(command string) string {
@@ -540,6 +540,7 @@ func renderPickerRow(
 	remoteStyle lipgloss.Style,
 	slugStyle lipgloss.Style,
 	descStyle lipgloss.Style,
+	active bool,
 ) string {
 	name := lipgloss.NewStyle().Width(nameWidth).Render(truncateText(pickerPrimaryText(candidate), nameWidth))
 	row := fmt.Sprintf("%s %s", selectMarker, name)
@@ -555,7 +556,9 @@ func renderPickerRow(
 	}
 	if detail != "" {
 		detail = truncateText(detail, 48)
-		if candidate.Slug != "" {
+		if active {
+			row = fmt.Sprintf("%s  %s", row, detail)
+		} else if candidate.Slug != "" {
 			row = fmt.Sprintf("%s  %s", row, slugStyle.Render(detail))
 		} else {
 			row = fmt.Sprintf("%s  %s", row, descStyle.Render(detail))

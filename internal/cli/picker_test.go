@@ -432,11 +432,11 @@ func TestPickerModelShowsTwentyVisibleRows(t *testing.T) {
 	if !strings.Contains(view, "Showing 1-20 of 25") {
 		t.Fatalf("expected pagination indicator, got:\n%s", view)
 	}
-	if !strings.Contains(view, "Enter select, Space enable multi-select, PgUp/PgDn (Fn+Up/Fn+Down) scroll") {
+	if !strings.Contains(view, "Enter select, Space multi-select, Esc cancel") {
 		t.Fatalf("expected single-select hint, got:\n%s", view)
 	}
-	if strings.Contains(view, "Ctrl+B/Ctrl+F") {
-		t.Fatalf("did not expect ctrl paging hint in view, got:\n%s", view)
+	if strings.Contains(view, "PgUp/PgDn") || strings.Contains(view, "fuzzy filter") {
+		t.Fatalf("did not expect paging or fuzzy-filter hint in view, got:\n%s", view)
 	}
 }
 
@@ -447,7 +447,7 @@ func TestPickerModelUsesMultiSelectHintWhenSelectionsExist(t *testing.T) {
 	})
 
 	view := stripANSI(model.View())
-	if !strings.Contains(view, "Space toggle, Enter apply, PgUp/PgDn (Fn+Up/Fn+Down) scroll") {
+	if !strings.Contains(view, "Space toggle, Enter apply, Esc cancel") {
 		t.Fatalf("expected multi-select hint for preselected summon picker, got:\n%s", view)
 	}
 	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Multi mode]") {

@@ -199,6 +199,8 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 
 	app := NewApp()
 	ghPath := writeFakeGHForCloneTest(t, h, true)
+	var stdout bytes.Buffer
+	app.Stdout = &stdout
 	app.Runner = Runner{Env: []string{
 		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
 		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
@@ -217,6 +219,9 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 
 	if err := app.Dismiss(h.Workspace, "service"); err != nil {
 		t.Fatalf("Dismiss trusted returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Trusted repository removed:") || !strings.Contains(stdout.String(), "acme/service") {
+		t.Fatalf("expected trusted dismiss success message, got:\n%s", stdout.String())
 	}
 	if _, err := os.Lstat(trustedLink); !os.IsNotExist(err) {
 		t.Fatalf("expected trusted symlink removal, got %v", err)

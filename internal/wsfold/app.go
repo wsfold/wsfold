@@ -29,6 +29,21 @@ func (a *App) SummonUntrusted(cwd string, ref string) error {
 	return a.summon(cwd, ref, TrustClassExternal)
 }
 
+func (a *App) ReindexTrusted() error {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	repos, err := refreshTrustedRemoteIndex(cfg, a.Runner)
+	if err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintf(a.Stdout, "refreshed trusted index for %d orgs (%d repos)\n", len(cfg.TrustedGitHubOrgs), len(repos))
+	return nil
+}
+
 func (a *App) Init(cwd string) error {
 	cfg, err := LoadConfig()
 	if err != nil {

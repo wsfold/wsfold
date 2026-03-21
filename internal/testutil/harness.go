@@ -119,6 +119,19 @@ func (h *Harness) Env() []string {
 	}
 }
 
+func (h *Harness) WriteExecutable(name string, contents string) string {
+	h.T.Helper()
+
+	path := filepath.Join(h.Root, "bin", name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		h.T.Fatalf("mkdir executable parent: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o755); err != nil {
+		h.T.Fatalf("write executable %s: %v", name, err)
+	}
+	return path
+}
+
 func (h *Harness) configureGitHubRewrite() {
 	h.T.Helper()
 	base := fmt.Sprintf("url.file://%s/.insteadOf", filepath.ToSlash(h.RemotesRoot)+"/")

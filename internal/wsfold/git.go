@@ -10,16 +10,39 @@ import (
 )
 
 type Runner struct {
-	Env []string
+	Env         []string
+	ExecCommand func(name string, dir string, env []string, args ...string) (string, error)
 }
 
 func (r Runner) Git(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	return r.run("git", dir, args...)
+}
+
+func (r Runner) GitHub(dir string, args ...string) (string, error) {
+	return r.run("gh", dir, args...)
+}
+
+func (r Runner) HasCommand(name string) bool {
+	_, err := r.lookupPath(name)
+	return err == nil
+}
+
+func (r Runner) run(name string, dir string, args ...string) (string, error) {
+	if r.ExecCommand != nil {
+		return r.ExecCommand(name, dir, r.env(), args...)
+	}
+
+	resolvedName := name
+	if located, err := r.lookupPath(name); err == nil {
+		resolvedName = located
+	}
+
+	cmd := exec.Command(resolvedName, args...)
 	if dir != "" {
 		cmd.Dir = dir
 	}
-	if len(r.Env) > 0 {
-		cmd.Env = append(os.Environ(), r.Env...)
+	if env := r.env(); len(env) > 0 {
+		cmd.Env = env
 	}
 
 	var stdout bytes.Buffer
@@ -32,10 +55,51 @@ func (r Runner) Git(dir string, args ...string) (string, error) {
 		if message == "" {
 			message = strings.TrimSpace(stdout.String())
 		}
-		return "", fmt.Errorf("git %s failed: %w: %s", strings.Join(args, " "), err, message)
+		if message != "" {
+			return "", fmt.Errorf("%s %s failed: %w: %s", name, strings.Join(args, " "), err, message)
+		}
+		return "", fmt.Errorf("%s %s failed: %w", name, strings.Join(args, " "), err)
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+func (r Runner) env() []string {
+	if len(r.Env) == 0 {
+		return nil
+	}
+	return append(os.Environ(), r.Env...)
+}
+
+func (r Runner) lookupPath(name string) (string, error) {
+	if strings.Contains(name, "/") {
+		return name, nil
+	}
+
+	pathEnv := os.Getenv("PATH")
+	for _, entry := range r.Env {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok && key == "PATH" {
+			pathEnv = value
+		}
+	}
+
+	for _, dir := range filepath.SplitList(pathEnv) {
+		if dir == "" {
+			dir = "."
+		}
+		candidate := filepath.Join(dir, name)
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if info.Mode()&0o111 == 0 {
+			continue
+		}
+		return candidate, nil
+	}
+
+	return "", exec.ErrNotFound
 }
 
 func currentWorkspaceRoot(cwd string) (string, error) {

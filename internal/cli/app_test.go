@@ -2,10 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/openclaw/wsfold/internal/testutil"
 	"github.com/openclaw/wsfold/internal/wsfold"
 )
 
@@ -147,4 +152,80 @@ func TestPlanSelectionChanges(t *testing.T) {
 	if len(removes) != 1 || removes[0] != "gamma" {
 		t.Fatalf("unexpected removes: %#v", removes)
 	}
+}
+
+func TestRunReindexTrustedRefreshesCache(t *testing.T) {
+	h := testutil.NewHarness(t)
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(h.Root, "cache"))
+
+	ghPath := h.WriteExecutable("gh", `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  exit 0
+fi
+if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "acme" ]; then
+  printf '%s\n' '[{"name":"service","nameWithOwner":"acme/service","isPrivate":false,"isArchived":false,"url":"https://github.com/acme/service"}]'
+  exit 0
+fi
+if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "platform-team" ]; then
+  printf '%s\n' '[]'
+  exit 0
+fi
+exit 1
+`)
+	t.Setenv("PATH", filepath.Dir(ghPath))
+
+	var stdout bytes.Buffer
+	if err := Run([]string{"reindex", "trusted"}, &stdout, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "refreshed trusted index") {
+		t.Fatalf("unexpected reindex output: %q", stdout.String())
+	}
+
+	acmeCache, ok, err := loadTrustedCacheForTest("acme")
+	if err != nil {
+		t.Fatalf("loadTrustedCacheForTest returned error: %v", err)
+	}
+	if !ok || len(acmeCache.Repos) != 1 || acmeCache.Repos[0].FullName != "acme/service" {
+		t.Fatalf("expected acme cache to be refreshed, got %#v", acmeCache)
+	}
+	if time.Since(acmeCache.FetchedAt) > time.Minute {
+		t.Fatalf("expected cache timestamp to be current, got %#v", acmeCache)
+	}
+}
+
+type trustedCacheForTest struct {
+	Org       string    `json:"org"`
+	FetchedAt time.Time `json:"fetchedAt"`
+	Repos     []struct {
+		FullName string `json:"fullName"`
+	} `json:"repos"`
+}
+
+func loadTrustedCacheForTest(org string) (trustedCacheForTest, bool, error) {
+	path, err := trustedRemoteCachePathForTest(org)
+	if err != nil {
+		return trustedCacheForTest{}, false, err
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return trustedCacheForTest{}, false, nil
+		}
+		return trustedCacheForTest{}, false, err
+	}
+	var payload trustedCacheForTest
+	return payload, true, json.Unmarshal(raw, &payload)
+}
+
+func trustedRemoteCachePathForTest(org string) (string, error) {
+	root, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "wsfold", "trusted-github", org+".json"), nil
 }

@@ -36,6 +36,7 @@ _wsfold() {
   subcommands=(
     'init:initialize the current directory as a workspace'
     'summon:attach a trusted repository'
+    'reindex:refresh trusted remote cache'
     'summon-untrusted:add an external repository as a workspace root'
     'dismiss:remove a repository from the current composition'
     'version:print build version metadata'
@@ -77,6 +78,8 @@ _wsfold() {
     arg)
       if [[ "${words[2]}" == "completion" ]]; then
         _describe -t shells 'shells' 'zsh:generate zsh completion script'
+      elif [[ "${words[2]}" == "reindex" ]]; then
+        _describe -t targets 'reindex targets' 'trusted:refresh trusted GitHub cache'
       fi
       return
       ;;

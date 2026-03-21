@@ -5,7 +5,8 @@ WSFold is a local-first Go CLI for composing trusted and external Git repositori
 In v1 it supports:
 
 - `wsfold init` for initializing a workspace in the current directory
-- `wsfold summon [repo-ref]` for trusted repository attachment
+- `wsfold summon [repo-ref]` for trusted repository attachment, with a remote-aware picker when no ref is provided
+- `wsfold reindex trusted` for refreshing the trusted GitHub remote cache
 - `wsfold summon-untrusted [repo-ref]` for external repository visibility without symlink embedding
 - `wsfold dismiss [repo-ref]` for removing a repo from the current composition
 - deterministic `.wsfold/manifest.yaml` state
@@ -23,6 +24,7 @@ After that, run commands from anywhere inside that workspace tree:
 
 ```bash
 wsfold summon acme/service
+wsfold reindex trusted
 wsfold summon-untrusted other/legacy-tool
 wsfold dismiss acme/service
 ```
@@ -34,6 +36,13 @@ wsfold summon
 wsfold summon-untrusted
 wsfold dismiss
 ```
+
+`wsfold summon` picker behavior:
+
+- always shows local trusted repos immediately
+- includes cached remote repos from `WSFOLD_TRUSTED_GITHUB_ORGS` when available
+- refreshes trusted remote metadata in the background with `gh` and live-updates the open picker
+- keeps shell completion local-only by design
 
 Zsh completion:
 
@@ -70,6 +79,9 @@ Rules:
 - repos under `WSFOLD_TRUSTED_DIR` are eligible for `./_prj/<name>` symlink mounting by default
 - repos under `WSFOLD_EXTERNAL_DIR` are never symlinked into the workspace tree
 - missing GitHub repos from trusted orgs may clone into `WSFOLD_TRUSTED_DIR` via `wsfold summon`
+- `wsfold summon` without a ref reads cached trusted GitHub repos from the user cache directory and refreshes them with `gh`
+- `wsfold reindex trusted` performs a blocking refresh of the trusted GitHub cache
+- run `gh auth login` to enable trusted remote refresh
 - `wsfold summon-untrusted` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`
 - `WSFOLD_PROJECTS_DIR` optionally overrides the trusted mount directory name; default is `_prj`
 

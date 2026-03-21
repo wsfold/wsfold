@@ -14,6 +14,7 @@ const helpText = `wsfold composes trusted and external repositories around the c
 Usage:
   wsfold init
   wsfold summon [repo-ref]
+  wsfold reindex trusted
   wsfold summon-untrusted [repo-ref]
   wsfold dismiss [repo-ref]
   wsfold version
@@ -21,7 +22,8 @@ Usage:
 
 Commands:
   init              initialize the current directory as a wsfold workspace
-  summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj} and refresh the workspace
+  summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj}; picker mode also shows cached trusted GitHub repos
+  reindex trusted   refresh the trusted GitHub remote cache
   summon-untrusted  add an external repository as a workspace root only
   dismiss           remove a repository from the current composition
   version           print build version metadata
@@ -61,6 +63,13 @@ func Run(args []string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("init does not accept positional arguments")
 		}
 		return app.Init(cwd)
+	}
+
+	if args[0] == "reindex" {
+		if len(args) != 2 || args[1] != "trusted" {
+			return fmt.Errorf("usage: wsfold reindex trusted")
+		}
+		return app.ReindexTrusted()
 	}
 
 	switch args[0] {
@@ -120,9 +129,21 @@ func resolveCommandRefs(app *wsfold.App, cwd string, command string, args []stri
 }
 
 func reconcileSelection(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) error {
-	candidates, err := app.Complete(cwd, command, "")
-	if err != nil {
-		return err
+	var (
+		candidates []wsfold.CompletionCandidate
+		err        error
+	)
+	if command == "summon" {
+		state, stateErr := app.TrustedSummonPickerState(cwd)
+		if stateErr != nil {
+			return stateErr
+		}
+		candidates = state.Candidates
+	} else {
+		candidates, err = app.Complete(cwd, command, "")
+		if err != nil {
+			return err
+		}
 	}
 
 	selected, err := runPicker(app, cwd, command, stdout, stderr)

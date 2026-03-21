@@ -9,6 +9,12 @@ import (
 	"github.com/openclaw/wsfold/internal/wsfold"
 )
 
+const (
+	ansiYellow = "\x1b[33m"
+	ansiBold   = "\x1b[1m"
+	ansiReset  = "\x1b[0m"
+)
+
 const helpText = `wsfold composes trusted and external repositories around the current workspace.
 
 Usage:
@@ -120,6 +126,16 @@ func Run(args []string, stdout, stderr io.Writer) error {
 func resolveCommandRefs(app *wsfold.App, cwd string, command string, args []string, stdout io.Writer, stderr io.Writer) ([]string, error) {
 	switch len(args) {
 	case 1:
+		if command == "dismiss" {
+			candidates, err := app.Complete(cwd, command, "")
+			if err != nil {
+				return nil, err
+			}
+			if len(candidates) == 0 {
+				_, _ = fmt.Fprintf(stdout, "%s·%s Nothing to dismiss\n", ansiYellow+ansiBold, ansiReset)
+				return nil, nil
+			}
+		}
 		return runPicker(app, cwd, command, stdout, stderr)
 	case 2:
 		return []string{args[1]}, nil

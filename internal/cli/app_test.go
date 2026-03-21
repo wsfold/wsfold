@@ -131,6 +131,28 @@ func TestResolveCommandRefsAllowsExplicitRepoRef(t *testing.T) {
 	}
 }
 
+func TestResolveCommandRefsDismissWithoutCandidatesIsNoop(t *testing.T) {
+	h := testutil.NewHarness(t)
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+
+	app := wsfold.NewApp()
+	var stdout bytes.Buffer
+	refs, err := resolveCommandRefs(app, h.Workspace, "dismiss", []string{"dismiss"}, &stdout, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("resolveCommandRefs returned error: %v", err)
+	}
+	if len(refs) != 0 {
+		t.Fatalf("expected no refs for dismiss noop, got %#v", refs)
+	}
+	if !strings.Contains(stdout.String(), "Nothing to dismiss") {
+		t.Fatalf("expected friendly dismiss noop message, got %q", stdout.String())
+	}
+}
+
 func TestResolveCommandRefsRejectsExtraArgs(t *testing.T) {
 	_, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "summon accepts zero or one repo ref") {

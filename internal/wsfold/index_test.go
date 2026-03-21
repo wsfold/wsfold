@@ -157,7 +157,12 @@ func TestFindOrCloneRepoClonesIntoExpectedRoot(t *testing.T) {
 		TrustedGitHubOrgs: []string{"acme"},
 	}
 
-	repo, err := findOrCloneRepo(cfg, Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}, "acme/service", TrustClassTrusted)
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	repo, err := findOrCloneRepo(cfg, Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}, "acme/service", TrustClassTrusted)
 	if err != nil {
 		t.Fatalf("findOrCloneRepo returned error: %v", err)
 	}
@@ -171,6 +176,46 @@ func TestFindOrCloneRepoClonesIntoExpectedRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(expected, ".git")); err != nil {
 		t.Fatalf("expected cloned repo on disk: %v", err)
+	}
+	origin := h.RunGit(expected, "remote", "get-url", "origin")
+	if !strings.Contains(origin, "acme/service.git") {
+		t.Fatalf("expected origin to be configured by gh clone, got %q", origin)
+	}
+}
+
+func TestFindOrCloneRepoTrustedCloneRequiresGitHubCLI(t *testing.T) {
+	h := testutil.NewHarness(t)
+	h.CreateGitHubRemote("acme", "service")
+
+	cfg := Config{
+		TrustedDir:        h.TrustedRoot,
+		ExternalDir:       h.ExternalRoot,
+		TrustedGitHubOrgs: []string{"acme"},
+	}
+
+	_, err := findOrCloneRepo(cfg, Runner{Env: []string{"PATH=" + filepath.Join(h.Root, "empty-bin")}}, "acme/service", TrustClassTrusted)
+	if err == nil || !strings.Contains(err.Error(), "trusted remote clone requires GitHub CLI authentication") {
+		t.Fatalf("expected gh requirement error, got %v", err)
+	}
+}
+
+func TestFindOrCloneRepoTrustedCloneRequiresAuthenticatedGitHubCLI(t *testing.T) {
+	h := testutil.NewHarness(t)
+	h.CreateGitHubRemote("acme", "service")
+
+	cfg := Config{
+		TrustedDir:        h.TrustedRoot,
+		ExternalDir:       h.ExternalRoot,
+		TrustedGitHubOrgs: []string{"acme"},
+	}
+
+	ghPath := writeFakeGHForCloneTest(t, h, false)
+	_, err := findOrCloneRepo(cfg, Runner{Env: []string{
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}, "acme/service", TrustClassTrusted)
+	if err == nil || !strings.Contains(err.Error(), "run gh auth login") {
+		t.Fatalf("expected gh auth guidance, got %v", err)
 	}
 }
 
@@ -226,4 +271,33 @@ func TestParseGitHubSlugPrefersSSHPatternOverGenericSplit(t *testing.T) {
 	if owner != "mikhail-yaskou" || repo != "assistant" {
 		t.Fatalf("unexpected parsed slug: %s/%s", owner, repo)
 	}
+}
+
+func writeFakeGHForCloneTest(t *testing.T, h *testutil.Harness, authenticated bool) string {
+	t.Helper()
+
+	authCheck := "exit 0"
+	if !authenticated {
+		authCheck = "echo not logged in >&2\n  exit 1"
+	}
+
+	return h.WriteExecutable("gh", `#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  `+authCheck+`
+fi
+if [ "$1" = "repo" ] && [ "$2" = "clone" ]; then
+  slug="$3"
+  destination="$4"
+  owner="${slug%%/*}"
+  repo="${slug##*/}"
+  remote="${WSFOLD_TEST_REMOTES_ROOT}/${owner}/${repo}.git"
+  exec git clone "file://$remote" "$destination"
+fi
+echo "unexpected gh invocation: $*" >&2
+exit 1
+`)
+}
+
+func prependTestPath(dir string) string {
+	return dir + string(os.PathListSeparator) + os.Getenv("PATH")
 }

@@ -22,7 +22,7 @@ Usage:
 
 Commands:
   init              initialize the current directory as a wsfold workspace
-  summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj}; picker mode also shows cached trusted GitHub repos
+  summon            attach a trusted repository into ./${WSFOLD_PROJECTS_DIR:-_prj}; remote trusted repos are discovered and cloned via gh
   reindex trusted   refresh the trusted GitHub remote cache
   summon-untrusted  add an external repository as a workspace root only
   dismiss           remove a repository from the current composition

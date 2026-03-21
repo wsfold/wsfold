@@ -72,7 +72,12 @@ func TestSummonMissingTrustedRepoClones(t *testing.T) {
 	h.CreateGitHubRemote("acme", "service")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "acme/service"); err != nil {
 		t.Fatalf("Summon returned error: %v", err)
@@ -81,6 +86,21 @@ func TestSummonMissingTrustedRepoClones(t *testing.T) {
 	cloned := filepath.Join(h.TrustedRoot, "acme", "service")
 	if _, err := os.Stat(filepath.Join(cloned, ".git")); err != nil {
 		t.Fatalf("expected clone at %s: %v", cloned, err)
+	}
+}
+
+func TestSummonMissingTrustedRepoRequiresAuthenticatedGitHubCLI(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+	h.CreateGitHubRemote("acme", "service")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"PATH=" + filepath.Join(h.Root, "empty-bin")}}
+
+	err := app.Summon(h.Workspace, "acme/service")
+	if err == nil || !strings.Contains(err.Error(), "trusted remote clone requires GitHub CLI authentication") {
+		t.Fatalf("expected gh requirement error, got %v", err)
 	}
 }
 
@@ -94,7 +114,12 @@ func TestSummonSupportsLocalFolderAlias(t *testing.T) {
 	h.RunGit(repoPath, "remote", "add", "origin", "git@github.com:mikhail-yaskou/math.git")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "math-app"); err != nil {
 		t.Fatalf("Summon returned error for local folder alias: %v", err)
@@ -164,7 +189,12 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 	h.RunGit(externalClone, "remote", "add", "origin", "https://github.com/other/legacy-tool.git")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "acme/service"); err != nil {
 		t.Fatalf("Summon returned error: %v", err)
@@ -208,7 +238,12 @@ func TestDismissSupportsLocalFolderAlias(t *testing.T) {
 	h.RunGit(repoPath, "remote", "add", "origin", "git@github.com:mikhail-yaskou/math.git")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "math-app"); err != nil {
 		t.Fatalf("Summon returned error for local folder alias: %v", err)
@@ -243,7 +278,12 @@ func TestDismissAfterManualSymlinkRemoval(t *testing.T) {
 	h.CreateGitHubRemote("acme", "service")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "acme/service"); err != nil {
 		t.Fatalf("Summon returned error: %v", err)
@@ -300,7 +340,12 @@ func TestDismissRemovesStaleMountResidueDirectory(t *testing.T) {
 	h.CreateGitHubRemote("acme", "service")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "acme/service"); err != nil {
 		t.Fatalf("Summon returned error: %v", err)
@@ -337,7 +382,12 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 	h.RunGit(externalClone, "remote", "add", "origin", "https://github.com/other/legacy-tool.git")
 
 	app := NewApp()
-	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
 
 	if err := app.Summon(h.Workspace, "acme/service"); err != nil {
 		t.Fatalf("Summon returned error: %v", err)

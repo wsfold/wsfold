@@ -42,6 +42,7 @@ wsfold dismiss
 - always shows local trusted repos immediately
 - includes cached remote repos from `WSFOLD_TRUSTED_GITHUB_ORGS` when available
 - refreshes trusted remote metadata in the background with `gh` and live-updates the open picker
+- clones trusted remote repos with `gh repo clone`
 - keeps shell completion local-only by design
 
 Zsh completion:
@@ -80,6 +81,7 @@ Rules:
 - repos under `WSFOLD_EXTERNAL_DIR` are never symlinked into the workspace tree
 - missing GitHub repos from trusted orgs may clone into `WSFOLD_TRUSTED_DIR` via `wsfold summon`
 - `wsfold summon` without a ref reads cached trusted GitHub repos from the user cache directory and refreshes them with `gh`
+- trusted remote summon clones use `gh repo clone`, following the user’s `gh` git protocol settings
 - `wsfold reindex trusted` performs a blocking refresh of the trusted GitHub cache
 - run `gh auth login` to enable trusted remote refresh
 - `wsfold summon-untrusted` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`

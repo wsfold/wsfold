@@ -228,11 +228,6 @@ func findOrCloneRepo(cfg Config, runner Runner, ref string, requested TrustClass
 		return Repo{}, fmt.Errorf("unsupported trust class %q", requested)
 	}
 
-	remoteURL, owner, name, err := remoteURLFromRef(ref)
-	if err != nil {
-		return Repo{}, err
-	}
-
 	root := cfg.TrustedDir
 	destination := filepath.Join(root, owner, name)
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
@@ -242,14 +237,23 @@ func findOrCloneRepo(cfg Config, runner Runner, ref string, requested TrustClass
 		return buildRepo(destination, requested, runner), nil
 	}
 
-	if _, err := runner.Git("", "clone", remoteURL, destination); err != nil {
-		return Repo{}, err
-	}
-	if _, err := runner.Git(destination, "remote", "set-url", "origin", remoteURL); err != nil {
+	if err := cloneTrustedGitHubRepo(runner, owner, name, destination); err != nil {
 		return Repo{}, err
 	}
 
 	return buildRepo(destination, requested, runner), nil
+}
+
+func cloneTrustedGitHubRepo(runner Runner, owner string, name string, destination string) error {
+	probe := probeGitHubCLI(runner)
+	if !probe.Ready {
+		return fmt.Errorf("trusted remote clone requires GitHub CLI authentication; %s; run gh auth login", strings.TrimPrefix(probe.Message, "remote index unavailable: "))
+	}
+
+	if _, err := runner.GitHub("", "repo", "clone", owner+"/"+name, destination); err != nil {
+		return fmt.Errorf("trusted remote clone via gh repo clone failed: %w", err)
+	}
+	return nil
 }
 
 func resolveExistingRepo(cfg Config, runner Runner, ref string, requested TrustClass) (Repo, error) {

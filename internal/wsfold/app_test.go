@@ -1,6 +1,7 @@
 package wsfold
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,9 +21,17 @@ func TestSummonExistingTrustedRepo(t *testing.T) {
 
 	app := NewApp()
 	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	var stdout bytes.Buffer
+	app.Stdout = &stdout
 
 	if err := app.Summon(h.Workspace, "service"); err != nil {
 		t.Fatalf("Summon returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "Trusted repository attached:") {
+		t.Fatalf("expected richer trusted summon success message, got:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "acme/service") || !strings.Contains(stdout.String(), "_prj/service") {
+		t.Fatalf("expected richer trusted summon success message, got:\n%s", stdout.String())
 	}
 
 	link := filepath.Join(h.Workspace, "_prj", "service")

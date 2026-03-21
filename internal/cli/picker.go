@@ -18,6 +18,7 @@ import (
 var errPickerCancelled = errors.New("selection cancelled")
 
 const minFuzzyMatchScore = -20
+const pickerVisibleItems = 20
 
 type pickerFunc func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error)
 
@@ -155,19 +156,19 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = errPickerCancelled
 			return m, tea.Quit
 		case "up", "ctrl+p":
-			if len(m.filtered) > 0 && m.cursor > 0 {
-				m.cursor--
-			}
+			m.moveCursor(-1)
 			return m, nil
 		case "down", "ctrl+n", "tab":
-			if len(m.filtered) > 0 && m.cursor < len(m.filtered)-1 {
-				m.cursor++
-			}
+			m.moveCursor(1)
 			return m, nil
 		case "shift+tab":
-			if len(m.filtered) > 0 && m.cursor > 0 {
-				m.cursor--
-			}
+			m.moveCursor(-1)
+			return m, nil
+		case "pgdown", "ctrl+f":
+			m.moveCursor(pickerVisibleItems)
+			return m, nil
+		case "pgup", "ctrl+b":
+			m.moveCursor(-pickerVisibleItems)
 			return m, nil
 		case " ":
 			if len(m.filtered) == 0 {
@@ -252,6 +253,20 @@ func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate)
 	}
 }
 
+func (m *pickerModel) moveCursor(delta int) {
+	if len(m.filtered) == 0 || delta == 0 {
+		return
+	}
+
+	m.cursor += delta
+	if m.cursor < 0 {
+		m.cursor = 0
+	}
+	if m.cursor >= len(m.filtered) {
+		m.cursor = len(m.filtered) - 1
+	}
+}
+
 func (m pickerModel) View() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
@@ -272,7 +287,7 @@ func (m pickerModel) View() string {
 	if len(m.filtered) == 0 {
 		lines = append(lines, hintStyle.Render("No matches"))
 	} else {
-		start, end := visibleRange(m.cursor, len(m.filtered), 10)
+		start, end := visibleRange(m.cursor, len(m.filtered), pickerVisibleItems)
 		nameWidth, sourceWidth := pickerColumnWidths(m.filtered[start:end])
 		for i := start; i < end; i++ {
 			item := m.filtered[i].candidate
@@ -288,9 +303,10 @@ func (m pickerModel) View() string {
 			}
 			lines = append(lines, prefix+render)
 		}
+		lines = append(lines, "", hintStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.filtered))))
 	}
 
-	lines = append(lines, "", hintStyle.Render("Space toggle, Enter apply, Esc cancel, type to fuzzy filter"))
+	lines = append(lines, "", hintStyle.Render("Space toggle, Enter apply, PgUp/PgDn (Fn+Up/Fn+Down) scroll, Esc cancel, type to fuzzy filter"))
 	if strings.TrimSpace(m.status) != "" {
 		lines = append(lines, hintStyle.Render(m.status))
 	} else if m.refreshing {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -199,6 +200,72 @@ func TestPickerModelFiltersVeryLowScoreMatches(t *testing.T) {
 	}
 	if model.filtered[0].candidate.Name != "piskel" {
 		t.Fatalf("expected relevant fuzzy match to remain, got %#v", model.filtered[0].candidate)
+	}
+}
+
+func TestPickerModelSupportsPageNavigation(t *testing.T) {
+	candidates := make([]wsfold.CompletionCandidate, 0, 30)
+	for i := 0; i < 30; i++ {
+		candidates = append(candidates, wsfold.CompletionCandidate{
+			Value: fmt.Sprintf("repo-%02d", i),
+		})
+	}
+
+	model := newPickerModel("summon", candidates)
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	model = updated.(pickerModel)
+	if model.cursor != 20 {
+		t.Fatalf("expected page down to jump to row 20, got %d", model.cursor)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	model = updated.(pickerModel)
+	if model.cursor != 0 {
+		t.Fatalf("expected page up to jump back to top, got %d", model.cursor)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlF})
+	model = updated.(pickerModel)
+	if model.cursor != 20 {
+		t.Fatalf("expected ctrl+f to page down, got %d", model.cursor)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyCtrlB})
+	model = updated.(pickerModel)
+	if model.cursor != 0 {
+		t.Fatalf("expected ctrl+b to page up, got %d", model.cursor)
+	}
+}
+
+func TestPickerModelShowsTwentyVisibleRows(t *testing.T) {
+	candidates := make([]wsfold.CompletionCandidate, 0, 25)
+	for i := 0; i < 25; i++ {
+		candidates = append(candidates, wsfold.CompletionCandidate{
+			Value: fmt.Sprintf("repo-%02d", i),
+		})
+	}
+
+	model := newPickerModel("summon", candidates)
+	view := stripANSI(model.View())
+
+	rowCount := 0
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "repo-") {
+			rowCount++
+		}
+	}
+	if rowCount != 20 {
+		t.Fatalf("expected 20 visible rows, got %d\n%s", rowCount, view)
+	}
+	if !strings.Contains(view, "Showing 1-20 of 25") {
+		t.Fatalf("expected pagination indicator, got:\n%s", view)
+	}
+	if !strings.Contains(view, "PgUp/PgDn (Fn+Up/Fn+Down) scroll") {
+		t.Fatalf("expected simplified paging hint, got:\n%s", view)
+	}
+	if strings.Contains(view, "Ctrl+B/Ctrl+F") {
+		t.Fatalf("did not expect ctrl paging hint in view, got:\n%s", view)
 	}
 }
 

@@ -275,6 +275,9 @@ func TestResolveCommandRefsDismissWithoutCandidatesIsNoop(t *testing.T) {
 	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
 
 	app := wsfold.NewApp()
+	if err := app.Init(h.Workspace); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
 	var stdout bytes.Buffer
 	refs, err := resolveCommandRefs(app, h.Workspace, "dismiss", []string{"dismiss"}, &stdout, &bytes.Buffer{})
 	if err != nil {

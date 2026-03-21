@@ -78,8 +78,6 @@ _wsfold() {
     arg)
       if [[ "${words[2]}" == "completion" ]]; then
         _describe -t shells 'shells' 'zsh:generate zsh completion script'
-      elif [[ "${words[2]}" == "reindex" ]]; then
-        _describe -t targets 'reindex targets' 'trusted:refresh trusted GitHub cache'
       fi
       return
       ;;

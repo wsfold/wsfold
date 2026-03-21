@@ -6,7 +6,7 @@ In v1 it supports:
 
 - `wsfold init` for initializing a workspace in the current directory
 - `wsfold summon [repo-ref]` for trusted repository attachment, with a remote-aware picker when no ref is provided
-- `wsfold reindex trusted` for refreshing the trusted GitHub remote cache
+- `wsfold reindex` for refreshing the trusted GitHub remote cache
 - `wsfold summon-external [repo-ref]` for external repository visibility without symlink embedding
 - `wsfold dismiss [repo-ref]` for removing a repo from the current composition
 - deterministic `.wsfold/manifest.yaml` state
@@ -24,7 +24,7 @@ After that, run commands from anywhere inside that workspace tree:
 
 ```bash
 wsfold summon acme/service
-wsfold reindex trusted
+wsfold reindex
 wsfold summon-external other/legacy-tool
 wsfold dismiss acme/service
 ```
@@ -82,7 +82,7 @@ Rules:
 - missing GitHub repos from trusted orgs may clone into `WSFOLD_TRUSTED_DIR` via `wsfold summon`
 - `wsfold summon` without a ref reads cached trusted GitHub repos from the user cache directory and refreshes them with `gh`
 - trusted remote summon clones use `gh repo clone`, following the user’s `gh` git protocol settings
-- `wsfold reindex trusted` performs a blocking refresh of the trusted GitHub cache
+- `wsfold reindex` performs a blocking refresh of the trusted GitHub cache
 - run `gh auth login` to enable trusted remote refresh
 - `wsfold summon-external` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`
 - `WSFOLD_PROJECTS_DIR` optionally overrides the trusted mount directory name; default is `_prj`

@@ -228,7 +228,7 @@ func TestPlanSelectionChanges(t *testing.T) {
 	}
 }
 
-func TestRunReindexTrustedRefreshesCache(t *testing.T) {
+func TestRunReindexRefreshesCache(t *testing.T) {
 	h := testutil.NewHarness(t)
 	for _, env := range h.Env() {
 		key, value, _ := strings.Cut(env, "=")
@@ -253,7 +253,7 @@ exit 1
 	t.Setenv("PATH", filepath.Dir(ghPath))
 
 	var stdout bytes.Buffer
-	if err := Run([]string{"reindex", "trusted"}, &stdout, &bytes.Buffer{}); err != nil {
+	if err := Run([]string{"reindex"}, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "refreshed trusted index") {

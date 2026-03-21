@@ -20,7 +20,7 @@ const helpText = `wsfold composes trusted and external repositories around the c
 Usage:
   wsfold init
   wsfold summon [repo-ref]
-  wsfold reindex trusted
+  wsfold reindex
   wsfold summon-external [repo-ref]
   wsfold dismiss [repo-ref]
   wsfold version
@@ -31,7 +31,7 @@ Commands:
   summon-external   add an external repository as a workspace root
   dismiss           remove a repository from the current composition
   init              initialize the current directory as a wsfold workspace
-  reindex trusted   refresh the trusted GitHub remote cache
+  reindex           refresh the trusted GitHub remote cache
   version           print build version metadata
   completion        print shell autocompletion setup
 `
@@ -72,8 +72,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if args[0] == "reindex" {
-		if len(args) != 2 || args[1] != "trusted" {
-			return fmt.Errorf("usage: wsfold reindex trusted")
+		if len(args) != 1 {
+			return fmt.Errorf("usage: wsfold reindex")
 		}
 		return app.ReindexTrusted()
 	}

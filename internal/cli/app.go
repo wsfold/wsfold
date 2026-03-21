@@ -23,7 +23,7 @@ Usage:
   wsfold reindex
   wsfold summon-external [repo-ref]
   wsfold dismiss [repo-ref]
-  wsfold version
+  wsfold --version
   wsfold completion zsh
 
 Commands:
@@ -32,7 +32,6 @@ Commands:
   dismiss           remove a repository from the current composition
   init              initialize the current directory as a wsfold workspace
   reindex           refresh the trusted GitHub remote cache
-  version           print build version metadata
   completion        print shell autocompletion setup
 `
 
@@ -42,7 +41,7 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	if args[0] == "--version" || args[0] == "version" {
+	if args[0] == "--version" || args[0] == "-v" {
 		_, err := fmt.Fprintf(stdout, "wsfold %s (commit %s, built %s)\n", buildinfo.Version, buildinfo.Commit, buildinfo.Date)
 		return err
 	}

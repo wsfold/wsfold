@@ -39,7 +39,6 @@ _wsfold() {
     'dismiss:remove a repository from the current composition'
     'init:initialize the current directory as a workspace'
     'reindex:refresh trusted remote cache'
-    'version:print build version metadata'
     'completion:print shell completion setup'
   )
 

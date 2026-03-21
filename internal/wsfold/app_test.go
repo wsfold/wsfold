@@ -132,7 +132,7 @@ func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 		}
 	})
 
-	t.Run("missing external repo clones", func(t *testing.T) {
+	t.Run("missing external repo stays local-only", func(t *testing.T) {
 		h := testutil.NewHarness(t)
 		setEnv(t, h)
 		initWorkspace(t, h)
@@ -141,16 +141,14 @@ func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 		app := NewApp()
 		app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
 
-		if err := app.SummonUntrusted(h.Workspace, "other/legacy-tool"); err != nil {
-			t.Fatalf("SummonUntrusted returned error: %v", err)
+		err := app.SummonUntrusted(h.Workspace, "other/legacy-tool")
+		if err == nil || !strings.Contains(err.Error(), "only supports local external repos") {
+			t.Fatalf("expected local-only external error, got %v", err)
 		}
 
 		cloned := filepath.Join(h.ExternalRoot, "other", "legacy-tool")
-		if _, err := os.Stat(filepath.Join(cloned, ".git")); err != nil {
-			t.Fatalf("expected external clone: %v", err)
-		}
-		if strings.HasPrefix(cloned, h.Workspace) {
-			t.Fatalf("external clone must stay outside workspace tree: %s", cloned)
+		if _, statErr := os.Stat(filepath.Join(cloned, ".git")); !os.IsNotExist(statErr) {
+			t.Fatalf("expected no external clone, stat error: %v", statErr)
 		}
 	})
 }
@@ -161,7 +159,9 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 	initWorkspace(t, h)
 
 	h.CreateGitHubRemote("acme", "service")
-	h.CreateGitHubRemote("other", "legacy-tool")
+	externalClone := filepath.Join(h.ExternalRoot, "other", "legacy-tool")
+	h.InitRepo(externalClone)
+	h.RunGit(externalClone, "remote", "add", "origin", "https://github.com/other/legacy-tool.git")
 
 	app := NewApp()
 	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
@@ -174,7 +174,6 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 	}
 
 	trustedClone := filepath.Join(h.TrustedRoot, "acme", "service")
-	externalClone := filepath.Join(h.ExternalRoot, "other", "legacy-tool")
 	trustedLink := filepath.Join(h.Workspace, "_prj", "service")
 
 	if err := app.Dismiss(h.Workspace, "service"); err != nil {
@@ -333,7 +332,9 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 	setEnv(t, h)
 	initWorkspace(t, h)
 	h.CreateGitHubRemote("acme", "service")
-	h.CreateGitHubRemote("other", "legacy-tool")
+	externalClone := filepath.Join(h.ExternalRoot, "other", "legacy-tool")
+	h.InitRepo(externalClone)
+	h.RunGit(externalClone, "remote", "add", "origin", "https://github.com/other/legacy-tool.git")
 
 	app := NewApp()
 	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
@@ -349,7 +350,6 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 	}
 
 	trustedClone := filepath.Join(h.TrustedRoot, "acme", "service")
-	externalClone := filepath.Join(h.ExternalRoot, "other", "legacy-tool")
 	if _, err := os.Stat(trustedClone); err != nil {
 		t.Fatalf("trusted clone missing after smoke flow: %v", err)
 	}

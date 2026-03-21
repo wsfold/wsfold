@@ -93,6 +93,9 @@ type pickerModel struct {
 	filtered   []pickerItem
 	cursor     int
 	selected   map[string]bool
+	multiSelect bool
+	pinSelections bool
+	lastQuery  string
 	err        error
 	status     string
 	refreshing bool
@@ -116,16 +119,22 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 	}
 
 	model := pickerModel{
-		command:  command,
-		input:    input,
-		items:    items,
-		selected: map[string]bool{},
+		command:     command,
+		input:       input,
+		items:       items,
+		selected:    map[string]bool{},
+		multiSelect: false,
+		pinSelections: false,
 	}
 	if command == "summon" || command == "summon-untrusted" {
 		for _, candidate := range candidates {
 			if candidate.Attached {
 				model.selected[candidate.Value] = true
 			}
+		}
+		if len(model.selected) > 0 {
+			model.multiSelect = true
+			model.pinSelections = true
 		}
 	}
 	model.refresh()
@@ -159,19 +168,35 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.moveCursor(-1)
 			return m, nil
 		case "down", "ctrl+n", "tab":
+			if m.shouldPinSelectionsOnLinearScroll(1) {
+				m.pinSelections = true
+				m.refresh()
+			}
 			m.moveCursor(1)
 			return m, nil
 		case "shift+tab":
 			m.moveCursor(-1)
 			return m, nil
 		case "pgdown", "ctrl+f":
+			if m.multiSelect && len(m.selected) > 0 && !m.pinSelections {
+				m.pinSelections = true
+				m.refresh()
+			}
 			m.moveCursor(pickerVisibleItems)
 			return m, nil
 		case "pgup", "ctrl+b":
+			if m.multiSelect && len(m.selected) > 0 && !m.pinSelections {
+				m.pinSelections = true
+				m.refresh()
+			}
 			m.moveCursor(-pickerVisibleItems)
 			return m, nil
 		case " ":
 			if len(m.filtered) == 0 {
+				return m, nil
+			}
+			if !m.multiSelect {
+				m.multiSelect = true
 				return m, nil
 			}
 			current := m.filtered[m.cursor].candidate.Value
@@ -180,6 +205,7 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.selected[current] = true
 			}
+			m.refresh()
 			return m, nil
 		case "enter":
 			return m, tea.Quit
@@ -193,12 +219,28 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *pickerModel) refresh() {
+	currentValue := ""
+	if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
+		currentValue = m.filtered[m.cursor].candidate.Value
+	}
+
 	query := strings.TrimSpace(m.input.Value())
+	queryChanged := query != m.lastQuery
+	shouldPinSelections := m.multiSelect && len(m.selected) > 0 && (m.pinSelections || query != "")
 	if query == "" {
-		m.filtered = append(m.filtered[:0], m.items...)
+		if shouldPinSelections {
+			m.filtered = m.buildPinnedItems(nil)
+		} else {
+			m.filtered = append(m.filtered[:0], m.items...)
+		}
+		if m.restoreCursorForValue(currentValue) {
+			m.lastQuery = query
+			return
+		}
 		if m.cursor >= len(m.filtered) {
 			m.cursor = max(0, len(m.filtered)-1)
 		}
+		m.lastQuery = query
 		return
 	}
 
@@ -209,21 +251,71 @@ func (m *pickerModel) refresh() {
 
 	matches := fuzzy.Find(query, searchable)
 	filtered := make([]pickerItem, 0, len(matches))
+	matchedValues := make(map[string]bool, len(matches))
 	for _, match := range matches {
 		if match.Score < minFuzzyMatchScore {
 			continue
 		}
-		filtered = append(filtered, m.items[match.Index])
+		item := m.items[match.Index]
+		filtered = append(filtered, item)
+		matchedValues[item.candidate.Value] = true
+	}
+
+	if shouldPinSelections {
+		filtered = m.buildPinnedItems(matchedValues)
 	}
 
 	m.filtered = filtered
 	if len(m.filtered) == 0 {
 		m.cursor = 0
+		m.lastQuery = query
 		return
+	}
+	if m.restoreCursorForValue(currentValue) && (!queryChanged || !m.selected[currentValue]) {
+		m.lastQuery = query
+		return
+	}
+	if m.multiSelect {
+		for i, item := range m.filtered {
+			if !m.selected[item.candidate.Value] {
+				m.cursor = i
+				m.lastQuery = query
+				return
+			}
+		}
 	}
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
 	}
+	m.lastQuery = query
+}
+
+func (m *pickerModel) buildPinnedItems(matchedValues map[string]bool) []pickerItem {
+	pinned := make([]pickerItem, 0, len(m.selected))
+	rest := make([]pickerItem, 0, len(m.items))
+	for _, item := range m.items {
+		if m.selected[item.candidate.Value] {
+			pinned = append(pinned, item)
+			continue
+		}
+		if matchedValues == nil || matchedValues[item.candidate.Value] {
+			rest = append(rest, item)
+		}
+	}
+	return append(pinned, rest...)
+}
+
+func (m *pickerModel) restoreCursorForValue(value string) bool {
+	if value == "" {
+		return false
+	}
+	for i, item := range m.filtered {
+		if item.candidate.Value == value {
+			m.cursor = i
+			return true
+		}
+	}
+	return false
 }
 
 func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate) {
@@ -267,6 +359,27 @@ func (m *pickerModel) moveCursor(delta int) {
 	}
 }
 
+func (m pickerModel) shouldPinSelectionsOnLinearScroll(delta int) bool {
+	if delta == 0 || !m.multiSelect || len(m.selected) == 0 || m.pinSelections || strings.TrimSpace(m.input.Value()) != "" {
+		return false
+	}
+
+	nextCursor := m.cursor + delta
+	if nextCursor < 0 {
+		nextCursor = 0
+	}
+	if nextCursor >= len(m.filtered) {
+		nextCursor = len(m.filtered) - 1
+	}
+	if nextCursor == m.cursor {
+		return false
+	}
+
+	start, end := visibleRange(m.cursor, len(m.filtered), pickerVisibleItems)
+	nextStart, nextEnd := visibleRange(nextCursor, len(m.filtered), pickerVisibleItems)
+	return start != nextStart || end != nextEnd
+}
+
 func (m pickerModel) View() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
@@ -292,9 +405,12 @@ func (m pickerModel) View() string {
 		for i := start; i < end; i++ {
 			item := m.filtered[i].candidate
 			prefix := "  "
-			selectMarker := emptyMarkerStyle.Render("○")
-			if m.selected[item.Value] {
-				selectMarker = markerStyle.Render("●")
+			selectMarker := " "
+			if m.multiSelect {
+				selectMarker = emptyMarkerStyle.Render("○")
+				if m.selected[item.Value] {
+					selectMarker = markerStyle.Render("●")
+				}
 			}
 			render := renderPickerRow(item, selectMarker, nameWidth, sourceWidth, localStyle, remoteStyle, slugStyle, descStyle)
 			if i == m.cursor {
@@ -306,7 +422,12 @@ func (m pickerModel) View() string {
 		lines = append(lines, "", hintStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.filtered))))
 	}
 
-	lines = append(lines, "", hintStyle.Render("Space toggle, Enter apply, PgUp/PgDn (Fn+Up/Fn+Down) scroll, Esc cancel, type to fuzzy filter"))
+	modeStatus := "Mode: Single"
+	if m.multiSelect {
+		modeStatus = fmt.Sprintf("Mode: Multi | Selected: %d", len(m.selected))
+	}
+	lines = append(lines, "", hintStyle.Render(modeStatus))
+	lines = append(lines, "", hintStyle.Render(m.hintText()))
 	if strings.TrimSpace(m.status) != "" {
 		lines = append(lines, hintStyle.Render(m.status))
 	} else if m.refreshing {
@@ -316,6 +437,12 @@ func (m pickerModel) View() string {
 }
 
 func (m pickerModel) selectedValues() []string {
+	if !m.multiSelect {
+		if len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
+			return nil
+		}
+		return []string{m.filtered[m.cursor].candidate.Value}
+	}
 	if len(m.selected) == 0 {
 		return nil
 	}
@@ -327,6 +454,13 @@ func (m pickerModel) selectedValues() []string {
 		}
 	}
 	return values
+}
+
+func (m pickerModel) hintText() string {
+	if m.multiSelect {
+		return "Space toggle, Enter apply, PgUp/PgDn (Fn+Up/Fn+Down) scroll, Esc cancel, type to fuzzy filter"
+	}
+	return "Enter select, Space enable multi-select, PgUp/PgDn (Fn+Up/Fn+Down) scroll, Esc cancel, type to fuzzy filter"
 }
 
 func pickerTitle(command string) string {

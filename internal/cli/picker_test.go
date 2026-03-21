@@ -10,8 +10,25 @@ import (
 	"github.com/openclaw/wsfold/internal/wsfold"
 )
 
-func TestPickerModelSupportsMultiSelect(t *testing.T) {
-	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+func TestPickerModelEnterSelectsCurrentRowInSingleMode(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Value: "alpha"},
+		{Value: "beta"},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(pickerModel)
+
+	selected := model.selectedValues()
+	if len(selected) != 1 || selected[0] != "beta" {
+		t.Fatalf("expected enter to select current row in single mode, got %#v", selected)
+	}
+}
+
+func TestPickerModelSpaceEnablesMultiSelectAndTogglesItems(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
 		{Value: "alpha"},
 		{Value: "beta"},
 		{Value: "gamma"},
@@ -19,8 +36,17 @@ func TestPickerModelSupportsMultiSelect(t *testing.T) {
 
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	model = updated.(pickerModel)
+	if !model.multiSelect {
+		t.Fatalf("expected space to enable multi-select")
+	}
+	if len(model.selected) != 0 {
+		t.Fatalf("did not expect entering multi-select to auto-select current row, got %#v", model.selected)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
 	if !model.selected["alpha"] {
-		t.Fatalf("expected current row to be selected after space, got %#v", model.selected)
+		t.Fatalf("expected current row to become selected after toggling in multi-select, got %#v", model.selected)
 	}
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -33,23 +59,6 @@ func TestPickerModelSupportsMultiSelect(t *testing.T) {
 	selected := model.selectedValues()
 	if len(selected) != 2 || selected[0] != "alpha" || selected[1] != "beta" {
 		t.Fatalf("unexpected selected values after multi-select confirm: %#v", selected)
-	}
-}
-
-func TestPickerModelEnterAllowsEmptySelection(t *testing.T) {
-	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
-		{Value: "alpha"},
-		{Value: "beta"},
-	})
-
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
-	model = updated.(pickerModel)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(pickerModel)
-
-	selected := model.selectedValues()
-	if len(selected) != 0 {
-		t.Fatalf("expected empty selected values after confirm without toggles: %#v", selected)
 	}
 }
 
@@ -75,6 +84,9 @@ func TestPickerModelDoesNotPreselectDismissCandidates(t *testing.T) {
 	if len(model.selected) != 0 {
 		t.Fatalf("did not expect dismiss picker to preselect entries, got %#v", model.selected)
 	}
+	if model.multiSelect {
+		t.Fatalf("did not expect dismiss picker to start in multi-select mode")
+	}
 }
 
 func TestPickerModelRendersSourceMarkersAndStatus(t *testing.T) {
@@ -85,15 +97,15 @@ func TestPickerModelRendersSourceMarkersAndStatus(t *testing.T) {
 	model.status = "remote index unavailable: gh is not installed"
 
 	view := model.View()
-	for _, expected := range []string{"service", "local", "acme/service", "worker", "remote", "gh is not installed"} {
+	for _, expected := range []string{"service", "local", "acme/service", "worker", "remote", "Mode: Single", "gh is not installed"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("expected picker view to contain %q, got:\n%s", expected, view)
 		}
 	}
 }
 
-func TestPickerModelRefreshMessageMergesCandidatesAndPreservesState(t *testing.T) {
-	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+func TestPickerModelRefreshMessageMergesCandidatesAndPreservesMultiSelectState(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
 		{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},
 		{Value: "acme/worker", Name: "worker", Slug: "acme/worker", Source: wsfold.CompletionSourceRemote},
 	})
@@ -103,6 +115,11 @@ func TestPickerModelRefreshMessageMergesCandidatesAndPreservesState(t *testing.T
 	model = updated.(pickerModel)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
 	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	if !model.multiSelect {
+		t.Fatalf("expected selection to switch picker into multi-select mode")
+	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	model = updated.(pickerModel)
 	if !model.selected["acme/worker"] {
@@ -131,6 +148,160 @@ func TestPickerModelRefreshMessageMergesCandidatesAndPreservesState(t *testing.T
 	}
 	if model.filtered[0].candidate.Value != "acme/worker" {
 		t.Fatalf("expected cursor to stay on previous candidate, got %#v", model.filtered[0].candidate)
+	}
+}
+
+func TestPickerModelPinsSelectedItemsWhileFilteringInMultiSelectMode(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha", Attached: true},
+		{Value: "beta", Name: "beta", Attached: true},
+		{Value: "gamma", Name: "gamma"},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model = updated.(pickerModel)
+
+	if len(model.filtered) != 3 {
+		t.Fatalf("expected selected items to remain visible while filtering, got %#v", model.filtered)
+	}
+	if model.filtered[0].candidate.Value != "alpha" || model.filtered[1].candidate.Value != "beta" || model.filtered[2].candidate.Value != "gamma" {
+		t.Fatalf("expected selected items to stay pinned ahead of matches, got %#v", model.filtered)
+	}
+	if model.cursor != 2 {
+		t.Fatalf("expected cursor to jump to first non-selected match below pinned selections, got %d", model.cursor)
+	}
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "Mode: Multi | Selected: 2") {
+		t.Fatalf("expected multi-select status in footer, got:\n%s", view)
+	}
+}
+
+func TestPickerModelPreservesCursorWhenCurrentFilteredItemStillExists(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha", Attached: true},
+		{Value: "beta", Name: "beta", Attached: true},
+		{Value: "gamma", Name: "gamma"},
+		{Value: "gamut", Name: "gamut"},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model = updated.(pickerModel)
+	for i, item := range model.filtered {
+		if item.candidate.Value == "gamut" {
+			model.cursor = i
+			break
+		}
+	}
+	if model.filtered[model.cursor].candidate.Value != "gamut" {
+		t.Fatalf("expected gamut to be present before narrowing filter, got %#v", model.filtered)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	model = updated.(pickerModel)
+	if model.filtered[model.cursor].candidate.Value != "gamut" {
+		t.Fatalf("expected cursor to stay on existing filtered item after refresh, got %#v", model.filtered[model.cursor].candidate)
+	}
+}
+
+func TestPickerModelDeselectedNonMatchingItemsDisappearFromFilteredList(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha"},
+		{Value: "gamma", Name: "gamma"},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	model = updated.(pickerModel)
+	if len(model.filtered) != 2 || model.filtered[0].candidate.Value != "alpha" {
+		t.Fatalf("expected selected non-matching item to stay visible, got %#v", model.filtered)
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	if len(model.filtered) != 1 || model.filtered[0].candidate.Value != "gamma" {
+		t.Fatalf("expected deselected non-matching item to disappear from filtered list, got %#v", model.filtered)
+	}
+}
+
+func TestPickerModelPinsSelectedItemsWhenPaging(t *testing.T) {
+	candidates := []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha"},
+		{Value: "beta", Name: "beta"},
+	}
+	for i := 0; i < 25; i++ {
+		candidates = append(candidates, wsfold.CompletionCandidate{
+			Value: fmt.Sprintf("repo-%02d", i),
+			Name:  fmt.Sprintf("repo-%02d", i),
+		})
+	}
+
+	model := newPickerModel("dismiss", candidates)
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	for i := 0; i < 5; i++ {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+		model = updated.(pickerModel)
+	}
+	if model.filtered[model.cursor].candidate.Value != "repo-03" {
+		t.Fatalf("expected cursor to reach repo-03 before selection, got %#v", model.filtered[model.cursor].candidate)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+
+	if model.filtered[0].candidate.Value != "alpha" || model.filtered[1].candidate.Value != "beta" {
+		t.Fatalf("did not expect selected item to pin before paging, got %#v", model.filtered[:6])
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	model = updated.(pickerModel)
+
+	if !model.pinSelections {
+		t.Fatalf("expected paging to enable pinned selection view")
+	}
+	if model.filtered[0].candidate.Value != "repo-03" {
+		t.Fatalf("expected selected item to pin to top after paging, got %#v", model.filtered[:6])
+	}
+}
+
+func TestPickerModelPinsSelectedItemsWhenScrollingPastVisibleWindow(t *testing.T) {
+	candidates := make([]wsfold.CompletionCandidate, 0, 30)
+	for i := 0; i < 30; i++ {
+		candidates = append(candidates, wsfold.CompletionCandidate{
+			Value: fmt.Sprintf("repo-%02d", i),
+			Name:  fmt.Sprintf("repo-%02d", i),
+		})
+	}
+
+	model := newPickerModel("dismiss", candidates)
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+
+	for !model.shouldPinSelectionsOnLinearScroll(1) {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+		model = updated.(pickerModel)
+		if model.pinSelections {
+			t.Fatalf("did not expect pinning before scrolling beyond visible window")
+		}
+	}
+
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(pickerModel)
+
+	if !model.pinSelections {
+		t.Fatalf("expected pinning after scrolling past visible window")
+	}
+	if model.filtered[0].candidate.Value != "repo-00" {
+		t.Fatalf("expected selected item to pin to top after scrolling, got %#v", model.filtered[:4])
 	}
 }
 
@@ -261,11 +432,26 @@ func TestPickerModelShowsTwentyVisibleRows(t *testing.T) {
 	if !strings.Contains(view, "Showing 1-20 of 25") {
 		t.Fatalf("expected pagination indicator, got:\n%s", view)
 	}
-	if !strings.Contains(view, "PgUp/PgDn (Fn+Up/Fn+Down) scroll") {
-		t.Fatalf("expected simplified paging hint, got:\n%s", view)
+	if !strings.Contains(view, "Enter select, Space enable multi-select, PgUp/PgDn (Fn+Up/Fn+Down) scroll") {
+		t.Fatalf("expected single-select hint, got:\n%s", view)
 	}
 	if strings.Contains(view, "Ctrl+B/Ctrl+F") {
 		t.Fatalf("did not expect ctrl paging hint in view, got:\n%s", view)
+	}
+}
+
+func TestPickerModelUsesMultiSelectHintWhenSelectionsExist(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha", Attached: true},
+		{Value: "beta", Name: "beta"},
+	})
+
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "Space toggle, Enter apply, PgUp/PgDn (Fn+Up/Fn+Down) scroll") {
+		t.Fatalf("expected multi-select hint for preselected summon picker, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Mode: Multi | Selected: 1") {
+		t.Fatalf("expected multi-select status for preselected summon picker, got:\n%s", view)
 	}
 }
 

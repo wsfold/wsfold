@@ -1,0 +1,49 @@
+version: 2
+
+project_name: wsfold
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: wsfold
+    main: ./cmd/wsfold
+    binary: wsfold
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/openclaw/wsfold/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/openclaw/wsfold/internal/buildinfo.Commit={{ .Commit }}
+      - -X github.com/openclaw/wsfold/internal/buildinfo.Date={{ .Date }}
+
+archives:
+  - id: release-archives
+    ids:
+      - wsfold
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+      - README.md
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- if eq .Os "darwin" }}Darwin{{ else if eq .Os "linux" }}Linux{{ else }}{{ .Os | title }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64{{ else if eq .Arch "arm64" }}arm64{{ else }}{{ .Arch }}{{ end }}
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ .Version }}-SNAPSHOT"
+
+changelog:
+  disable: true

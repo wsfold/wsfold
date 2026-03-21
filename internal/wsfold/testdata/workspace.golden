@@ -1,0 +1,27 @@
+{
+  "folders": [
+    {
+      "name": "{{PRIMARY_NAME}}",
+      "path": "."
+    },
+    {
+      "name": "service",
+      "path": "_prj/service"
+    },
+    {
+      "name": "tool",
+      "path": "{{EXTERNAL_RELATIVE_PATH}}"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "_prj": true
+    },
+    "files.watcherExclude": {
+      "_prj": true
+    },
+    "search.exclude": {
+      "_prj": true
+    }
+  }
+}

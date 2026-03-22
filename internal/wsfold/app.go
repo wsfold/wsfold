@@ -53,7 +53,14 @@ func (a *App) ReindexTrusted() error {
 		return err
 	}
 
-	_, _ = fmt.Fprintf(a.Stdout, "refreshed trusted index for %d orgs (%d repos)\n", len(cfg.TrustedGitHubOrgs), len(repos))
+	nonArchived := 0
+	for _, repo := range repos {
+		if !repo.Archived {
+			nonArchived++
+		}
+	}
+
+	_, _ = fmt.Fprintf(a.Stdout, "refreshed trusted index for %d orgs (%d total repos, %d non-archived)\n", len(cfg.TrustedGitHubOrgs), len(repos), nonArchived)
 	return nil
 }
 

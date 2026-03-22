@@ -355,7 +355,7 @@ if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
   exit 0
 fi
 if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "acme" ]; then
-  printf '%s\n' '[{"name":"service","nameWithOwner":"acme/service","isPrivate":false,"isArchived":false,"url":"https://github.com/acme/service"}]'
+  printf '%s\n' '[{"name":"service","nameWithOwner":"acme/service","isPrivate":false,"isArchived":false,"url":"https://github.com/acme/service"},{"name":"old-service","nameWithOwner":"acme/old-service","isPrivate":false,"isArchived":true,"url":"https://github.com/acme/old-service"}]'
   exit 0
 fi
 if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "platform-team" ]; then
@@ -370,7 +370,7 @@ exit 1
 	if err := Run([]string{"reindex"}, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "refreshed trusted index") {
+	if !strings.Contains(stdout.String(), "refreshed trusted index") || !strings.Contains(stdout.String(), "2 total repos, 1 non-archived") {
 		t.Fatalf("unexpected reindex output: %q", stdout.String())
 	}
 
@@ -378,8 +378,15 @@ exit 1
 	if err != nil {
 		t.Fatalf("loadTrustedCacheForTest returned error: %v", err)
 	}
-	if !ok || len(acmeCache.Repos) != 1 || acmeCache.Repos[0].FullName != "acme/service" {
+	if !ok || len(acmeCache.Repos) != 2 {
 		t.Fatalf("expected acme cache to be refreshed, got %#v", acmeCache)
+	}
+	var names []string
+	for _, repo := range acmeCache.Repos {
+		names = append(names, repo.FullName)
+	}
+	if !strings.Contains(strings.Join(names, ","), "acme/service") || !strings.Contains(strings.Join(names, ","), "acme/old-service") {
+		t.Fatalf("expected acme cache to contain refreshed repos, got %#v", acmeCache)
 	}
 	if time.Since(acmeCache.FetchedAt) > time.Minute {
 		t.Fatalf("expected cache timestamp to be current, got %#v", acmeCache)

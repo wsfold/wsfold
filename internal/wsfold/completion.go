@@ -9,9 +9,11 @@ import (
 )
 
 type CompletionCandidate struct {
+	Key         string
 	Value       string
 	Description string
 	Attached    bool
+	TrustClass  TrustClass
 	Name        string
 	Slug        string
 	Source      CompletionSource
@@ -155,19 +157,24 @@ func (a *App) completeManifest(cwd string, prefix string) ([]CompletionCandidate
 	seen := map[string]struct{}{}
 	for _, entry := range all {
 		value := valueByPath[entry.CheckoutPath]
+		key := entry.Key()
 		if prefix != "" && !strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
 			continue
 		}
-		if _, ok := seen[value]; ok {
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[value] = struct{}{}
+		seen[key] = struct{}{}
 
 		description := completionDescription(entry.RepoRef, entry.CheckoutPath)
 		candidates = append(candidates, CompletionCandidate{
+			Key:         key,
 			Value:       value,
 			Description: description,
 			Attached:    true,
+			TrustClass:  entry.TrustClass,
+			Name:        completionFolderName(entry.CheckoutPath),
+			Source:      CompletionSourceLocal,
 		})
 	}
 
@@ -190,20 +197,23 @@ func completionCandidatesFromRepos(repos []Repo, attached map[string]bool, prefi
 	seen := map[string]struct{}{}
 	for _, repo := range repos {
 		value := valueByPath[repo.CheckoutPath]
+		key := repoCompletionKey(repo)
 		if prefix != "" && !strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
 			continue
 		}
-		if _, ok := seen[value]; ok {
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[value] = struct{}{}
+		seen[key] = struct{}{}
 
 		description := completionDescription(repo.OriginURL, repo.CheckoutPath)
 		candidates = append(candidates, CompletionCandidate{
+			Key:         key,
 			Value:       value,
 			Description: description,
 			Attached:    attached[repo.CheckoutPath],
-			Name:        repo.Name,
+			TrustClass:  repo.TrustClass,
+			Name:        completionFolderName(repo.CheckoutPath),
 			Slug:        repo.Slug,
 			Source:      CompletionSourceLocal,
 		})
@@ -226,8 +236,10 @@ func trustedRemoteCompletionCandidates(repos []TrustedRemoteRepo) []CompletionCa
 			}
 		}
 		candidates = append(candidates, CompletionCandidate{
+			Key:         trustedRemoteCandidateKey(repo),
 			Value:       repo.FullName,
 			Description: repo.FullName,
+			TrustClass:  TrustClassTrusted,
 			Name:        name,
 			Slug:        repo.FullName,
 			Source:      CompletionSourceRemote,
@@ -349,4 +361,16 @@ func attachedCheckoutPaths(cwd string) map[string]bool {
 	}
 
 	return attached
+}
+
+func repoCompletionKey(repo Repo) string {
+	identity := strings.TrimSpace(repo.Slug)
+	if identity == "" {
+		identity = strings.TrimSpace(repo.CheckoutPath)
+	}
+	return fmt.Sprintf("%s|%s", repo.TrustClass, strings.ToLower(identity))
+}
+
+func trustedRemoteCandidateKey(repo TrustedRemoteRepo) string {
+	return fmt.Sprintf("%s|%s", TrustClassTrusted, strings.ToLower(strings.TrimSpace(repo.FullName)))
 }

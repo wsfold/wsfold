@@ -87,19 +87,18 @@ type trustedSummonRefreshMsg struct {
 }
 
 type pickerModel struct {
-	command    string
-	input      textinput.Model
-	items      []pickerItem
-	filtered   []pickerItem
-	cursor     int
-	selected   map[string]bool
+	command     string
+	input       textinput.Model
+	items       []pickerItem
+	filtered    []pickerItem
+	cursor      int
+	selected    map[string]bool
 	multiSelect bool
-	pinSelections bool
-	lastQuery  string
-	err        error
-	status     string
-	refreshing bool
-	initCmd    tea.Cmd
+	lastQuery   string
+	err         error
+	status      string
+	refreshing  bool
+	initCmd     tea.Cmd
 }
 
 func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pickerModel {
@@ -124,18 +123,6 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 		items:       items,
 		selected:    map[string]bool{},
 		multiSelect: false,
-		pinSelections: false,
-	}
-	if command == "summon" || command == "summon-external" {
-		for _, candidate := range candidates {
-			if candidate.Attached {
-				model.selected[candidate.Value] = true
-			}
-		}
-		if len(model.selected) > 0 {
-			model.multiSelect = true
-			model.pinSelections = true
-		}
 	}
 	model.refresh()
 	return model
@@ -168,27 +155,15 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.moveCursor(-1)
 			return m, nil
 		case "down", "ctrl+n", "tab":
-			if m.shouldPinSelectionsOnLinearScroll(1) {
-				m.pinSelections = true
-				m.refresh()
-			}
 			m.moveCursor(1)
 			return m, nil
 		case "shift+tab":
 			m.moveCursor(-1)
 			return m, nil
 		case "pgdown", "ctrl+f":
-			if m.multiSelect && len(m.selected) > 0 && !m.pinSelections {
-				m.pinSelections = true
-				m.refresh()
-			}
 			m.moveCursor(pickerVisibleItems)
 			return m, nil
 		case "pgup", "ctrl+b":
-			if m.multiSelect && len(m.selected) > 0 && !m.pinSelections {
-				m.pinSelections = true
-				m.refresh()
-			}
 			m.moveCursor(-pickerVisibleItems)
 			return m, nil
 		case " ":
@@ -199,7 +174,11 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.multiSelect = true
 				return m, nil
 			}
-			current := m.filtered[m.cursor].candidate.Value
+			currentItem := m.filtered[m.cursor].candidate
+			if m.isReadOnlyAttached(currentItem) {
+				return m, nil
+			}
+			current := candidateKey(currentItem)
 			if m.selected[current] {
 				delete(m.selected, current)
 			} else {
@@ -208,6 +187,9 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refresh()
 			return m, nil
 		case "enter":
+			if !m.multiSelect && m.isCurrentRowReadOnlyAttached() {
+				return m, nil
+			}
 			if m.multiSelect && len(m.selected) == 0 {
 				return m, nil
 			}
@@ -222,21 +204,15 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *pickerModel) refresh() {
-	currentValue := ""
+	currentKey := ""
 	if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
-		currentValue = m.filtered[m.cursor].candidate.Value
+		currentKey = candidateKey(m.filtered[m.cursor].candidate)
 	}
 
 	query := strings.TrimSpace(m.input.Value())
-	queryChanged := query != m.lastQuery
-	shouldPinSelections := m.multiSelect && len(m.selected) > 0 && (m.pinSelections || query != "")
 	if query == "" {
-		if shouldPinSelections {
-			m.filtered = m.buildPinnedItems(nil)
-		} else {
-			m.filtered = append(m.filtered[:0], m.items...)
-		}
-		if m.restoreCursorForValue(currentValue) {
+		m.filtered = append(m.filtered[:0], m.items...)
+		if m.restoreCursorForKey(currentKey) {
 			m.lastQuery = query
 			return
 		}
@@ -254,18 +230,12 @@ func (m *pickerModel) refresh() {
 
 	matches := fuzzy.Find(query, searchable)
 	filtered := make([]pickerItem, 0, len(matches))
-	matchedValues := make(map[string]bool, len(matches))
 	for _, match := range matches {
 		if match.Score < minFuzzyMatchScore {
 			continue
 		}
 		item := m.items[match.Index]
 		filtered = append(filtered, item)
-		matchedValues[item.candidate.Value] = true
-	}
-
-	if shouldPinSelections {
-		filtered = m.buildPinnedItems(matchedValues)
 	}
 
 	m.filtered = filtered
@@ -274,18 +244,9 @@ func (m *pickerModel) refresh() {
 		m.lastQuery = query
 		return
 	}
-	if m.restoreCursorForValue(currentValue) && (!queryChanged || !m.selected[currentValue]) {
+	if m.restoreCursorForKey(currentKey) {
 		m.lastQuery = query
 		return
-	}
-	if m.multiSelect {
-		for i, item := range m.filtered {
-			if !m.selected[item.candidate.Value] {
-				m.cursor = i
-				m.lastQuery = query
-				return
-			}
-		}
 	}
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
@@ -293,27 +254,12 @@ func (m *pickerModel) refresh() {
 	m.lastQuery = query
 }
 
-func (m *pickerModel) buildPinnedItems(matchedValues map[string]bool) []pickerItem {
-	pinned := make([]pickerItem, 0, len(m.selected))
-	rest := make([]pickerItem, 0, len(m.items))
-	for _, item := range m.items {
-		if m.selected[item.candidate.Value] {
-			pinned = append(pinned, item)
-			continue
-		}
-		if matchedValues == nil || matchedValues[item.candidate.Value] {
-			rest = append(rest, item)
-		}
-	}
-	return append(pinned, rest...)
-}
-
-func (m *pickerModel) restoreCursorForValue(value string) bool {
-	if value == "" {
+func (m *pickerModel) restoreCursorForKey(key string) bool {
+	if key == "" {
 		return false
 	}
 	for i, item := range m.filtered {
-		if item.candidate.Value == value {
+		if candidateKey(item.candidate) == key {
 			m.cursor = i
 			return true
 		}
@@ -322,9 +268,9 @@ func (m *pickerModel) restoreCursorForValue(value string) bool {
 }
 
 func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate) {
-	currentValue := ""
+	currentKey := ""
 	if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
-		currentValue = m.filtered[m.cursor].candidate.Value
+		currentKey = candidateKey(m.filtered[m.cursor].candidate)
 	}
 
 	items := make([]pickerItem, 0, len(candidates))
@@ -337,11 +283,11 @@ func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate)
 	m.items = items
 	m.refresh()
 
-	if currentValue == "" {
+	if currentKey == "" {
 		return
 	}
 	for i, item := range m.filtered {
-		if item.candidate.Value == currentValue {
+		if candidateKey(item.candidate) == currentKey {
 			m.cursor = i
 			return
 		}
@@ -362,36 +308,33 @@ func (m *pickerModel) moveCursor(delta int) {
 	}
 }
 
-func (m pickerModel) shouldPinSelectionsOnLinearScroll(delta int) bool {
-	if delta == 0 || !m.multiSelect || len(m.selected) == 0 || m.pinSelections || strings.TrimSpace(m.input.Value()) != "" {
+func (m pickerModel) isReadOnlyAttached(candidate wsfold.CompletionCandidate) bool {
+	if !candidate.Attached {
 		return false
 	}
+	return m.command == "summon" || m.command == "summon-external"
+}
 
-	nextCursor := m.cursor + delta
-	if nextCursor < 0 {
-		nextCursor = 0
-	}
-	if nextCursor >= len(m.filtered) {
-		nextCursor = len(m.filtered) - 1
-	}
-	if nextCursor == m.cursor {
+func (m pickerModel) isCurrentRowReadOnlyAttached() bool {
+	if len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
 		return false
 	}
-
-	start, end := visibleRange(m.cursor, len(m.filtered), pickerVisibleItems)
-	nextStart, nextEnd := visibleRange(nextCursor, len(m.filtered), pickerVisibleItems)
-	return start != nextStart || end != nextEnd
+	return m.isReadOnlyAttached(m.filtered[m.cursor].candidate)
 }
 
 func (m pickerModel) View() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	selectedSectionStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	emptyMarkerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 	markerStyle := lipgloss.NewStyle().Foreground(selectionMarkerColor(m.command))
+	attachedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	localStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	remoteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+	trustedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	externalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	slugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 	lines := []string{
@@ -400,22 +343,26 @@ func (m pickerModel) View() string {
 		"",
 	}
 
+	lines = append(lines, hintStyle.Render("Results"))
+
 	if len(m.filtered) == 0 {
 		lines = append(lines, hintStyle.Render("No matches"))
 	} else {
 		start, end := visibleRange(m.cursor, len(m.filtered), pickerVisibleItems)
-		nameWidth, sourceWidth := pickerColumnWidths(m.filtered[start:end])
+		nameWidth, sourceWidth := pickerColumnWidths(m.filtered[start:end], m.command)
 		for i := start; i < end; i++ {
 			item := m.filtered[i].candidate
 			prefix := "  "
 			selectMarker := " "
 			if m.multiSelect {
 				selectMarker = emptyMarkerStyle.Render("○")
-				if m.selected[item.Value] {
+				if m.isReadOnlyAttached(item) {
+					selectMarker = attachedStyle.Render("✓")
+				} else if m.selected[candidateKey(item)] {
 					selectMarker = markerStyle.Render("●")
 				}
 			}
-			render := renderPickerRow(item, selectMarker, nameWidth, sourceWidth, localStyle, remoteStyle, slugStyle, descStyle, i == m.cursor)
+			render := renderPickerRow(item, m.command, selectMarker, nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, descStyle, i == m.cursor)
 			if i == m.cursor {
 				prefix = "> "
 				render = selectedStyle.Render(render)
@@ -423,6 +370,15 @@ func (m pickerModel) View() string {
 			lines = append(lines, prefix+render)
 		}
 		lines = append(lines, "", hintStyle.Render(fmt.Sprintf("Showing %d-%d of %d", start+1, end, len(m.filtered))))
+	}
+
+	if selectedItems := m.selectedItems(); len(selectedItems) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, selectedSectionStyle.Render(fmt.Sprintf("Selected (%d)", len(selectedItems))))
+		nameWidth, sourceWidth := pickerColumnWidths(selectedItems, m.command)
+		for _, item := range selectedItems {
+			lines = append(lines, "  "+renderPickerRow(item.candidate, m.command, " ", nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, descStyle, false))
+		}
 	}
 
 	lines = append(lines, "", hintStyle.Render(m.hintText()))
@@ -439,7 +395,11 @@ func (m pickerModel) selectedValues() []string {
 		if len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
 			return nil
 		}
-		return []string{m.filtered[m.cursor].candidate.Value}
+		current := m.filtered[m.cursor].candidate
+		if m.isReadOnlyAttached(current) {
+			return nil
+		}
+		return []string{current.Value}
 	}
 	if len(m.selected) == 0 {
 		return nil
@@ -447,11 +407,25 @@ func (m pickerModel) selectedValues() []string {
 
 	values := make([]string, 0, len(m.selected))
 	for _, item := range m.items {
-		if m.selected[item.candidate.Value] {
+		if m.selected[candidateKey(item.candidate)] {
 			values = append(values, item.candidate.Value)
 		}
 	}
 	return values
+}
+
+func (m pickerModel) selectedItems() []pickerItem {
+	if len(m.selected) == 0 {
+		return nil
+	}
+
+	items := make([]pickerItem, 0, len(m.selected))
+	for _, item := range m.items {
+		if m.selected[candidateKey(item.candidate)] {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 func (m pickerModel) hintText() string {
@@ -539,11 +513,15 @@ func refreshTrustedSummonPickerCmd(app *wsfold.App, cwd string) tea.Cmd {
 
 func renderPickerRow(
 	candidate wsfold.CompletionCandidate,
+	command string,
 	selectMarker string,
 	nameWidth int,
 	sourceWidth int,
+	attachedStyle lipgloss.Style,
 	localStyle lipgloss.Style,
 	remoteStyle lipgloss.Style,
+	trustedStyle lipgloss.Style,
+	externalStyle lipgloss.Style,
 	slugStyle lipgloss.Style,
 	descStyle lipgloss.Style,
 	active bool,
@@ -551,9 +529,9 @@ func renderPickerRow(
 	name := lipgloss.NewStyle().Width(nameWidth).Render(truncateText(pickerPrimaryText(candidate), nameWidth))
 	row := fmt.Sprintf("%s %s", selectMarker, name)
 
-	if candidate.Source != "" {
-		sourceText := lipgloss.NewStyle().Width(sourceWidth).Render(string(candidate.Source))
-		row = fmt.Sprintf("%s  %s", row, renderSourceMarkerText(candidate.Source, sourceText, localStyle, remoteStyle))
+	if sourceText := pickerSourceLabel(candidate, command); sourceText != "" {
+		sourceText = lipgloss.NewStyle().Width(sourceWidth).Render(sourceText)
+		row = fmt.Sprintf("%s  %s", row, renderSourceMarkerText(candidate, command, sourceText, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle))
 	}
 
 	detail := candidate.Slug
@@ -574,12 +552,12 @@ func renderPickerRow(
 	return row
 }
 
-func pickerColumnWidths(items []pickerItem) (int, int) {
+func pickerColumnWidths(items []pickerItem, command string) (int, int) {
 	nameWidth := 0
 	sourceWidth := 0
 	for _, item := range items {
 		nameWidth = max(nameWidth, min(displayWidth(pickerPrimaryText(item.candidate)), 28))
-		sourceWidth = max(sourceWidth, displayWidth(string(item.candidate.Source)))
+		sourceWidth = max(sourceWidth, displayWidth(pickerSourceLabel(item.candidate, command)))
 	}
 	if nameWidth == 0 {
 		nameWidth = 1
@@ -590,8 +568,37 @@ func pickerColumnWidths(items []pickerItem) (int, int) {
 	return nameWidth, sourceWidth
 }
 
-func renderSourceMarkerText(source wsfold.CompletionSource, text string, localStyle lipgloss.Style, remoteStyle lipgloss.Style) string {
-	switch source {
+func pickerSourceLabel(candidate wsfold.CompletionCandidate, command string) string {
+	if candidate.Attached && command == "summon" {
+		return "attached"
+	}
+	if candidate.Attached && command == "summon-external" {
+		return "added"
+	}
+	if command == "dismiss" {
+		switch candidate.TrustClass {
+		case wsfold.TrustClassTrusted:
+			return "trusted"
+		case wsfold.TrustClassExternal:
+			return "external"
+		}
+	}
+	return string(candidate.Source)
+}
+
+func renderSourceMarkerText(candidate wsfold.CompletionCandidate, command string, text string, attachedStyle lipgloss.Style, localStyle lipgloss.Style, remoteStyle lipgloss.Style, trustedStyle lipgloss.Style, externalStyle lipgloss.Style) string {
+	if candidate.Attached && (command == "summon" || command == "summon-external") {
+		return attachedStyle.Render(text)
+	}
+	if command == "dismiss" {
+		switch candidate.TrustClass {
+		case wsfold.TrustClassTrusted:
+			return trustedStyle.Render(text)
+		case wsfold.TrustClassExternal:
+			return externalStyle.Render(text)
+		}
+	}
+	switch candidate.Source {
 	case wsfold.CompletionSourceLocal:
 		return localStyle.Render(text)
 	case wsfold.CompletionSourceRemote:
@@ -622,4 +629,11 @@ func truncateText(text string, width int) string {
 
 func displayWidth(text string) int {
 	return utf8.RuneCountInString(text)
+}
+
+func candidateKey(candidate wsfold.CompletionCandidate) string {
+	if candidate.Key != "" {
+		return candidate.Key
+	}
+	return candidate.Value
 }

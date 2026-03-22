@@ -53,7 +53,14 @@ func (a *App) ReindexTrusted() error {
 		return err
 	}
 
-	_, _ = fmt.Fprintf(a.Stdout, "refreshed trusted index for %d orgs (%d repos)\n", len(cfg.TrustedGitHubOrgs), len(repos))
+	nonArchived := 0
+	for _, repo := range repos {
+		if !repo.Archived {
+			nonArchived++
+		}
+	}
+
+	_, _ = fmt.Fprintf(a.Stdout, "refreshed trusted index for %d orgs (%d total repos, %d non-archived)\n", len(cfg.TrustedGitHubOrgs), len(repos), nonArchived)
 	return nil
 }
 
@@ -154,7 +161,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 		return err
 	}
 	if !ok {
-		return nil
+		return fmt.Errorf("%s repository %q is not part of the current workspace composition", ansiRedBold+"✗"+ansiReset, ref)
 	}
 
 	if entry.TrustClass == TrustClassTrusted && entry.MountPath != "" {

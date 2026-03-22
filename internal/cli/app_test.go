@@ -227,6 +227,50 @@ func TestRunCompletionWithoutArgsPrintsSetupHelp(t *testing.T) {
 	}
 }
 
+func TestRunDynamicCompletionSkipsAlreadyAttachedReposForSummonCommands(t *testing.T) {
+	h := testutil.NewHarness(t)
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+
+	trustedRepo := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(trustedRepo)
+	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	externalRepo := filepath.Join(h.ExternalRoot, "legacy-tool")
+	h.InitRepo(externalRepo)
+	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/github/legacy-tool.git")
+
+	app := wsfold.NewApp()
+	if err := app.Init(h.Workspace); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+	if err := app.SummonUntrusted(h.Workspace, "legacy-tool"); err != nil {
+		t.Fatalf("SummonUntrusted returned error: %v", err)
+	}
+
+	var summonStdout bytes.Buffer
+	if err := writeDynamicCompletions(h.Workspace, []string{"__complete", "summon", "se"}, &summonStdout); err != nil {
+		t.Fatalf("writeDynamicCompletions summon returned error: %v", err)
+	}
+	if strings.Contains(summonStdout.String(), "service") {
+		t.Fatalf("did not expect attached summon repo in completion output, got %q", summonStdout.String())
+	}
+
+	var externalStdout bytes.Buffer
+	if err := writeDynamicCompletions(h.Workspace, []string{"__complete", "summon-external", "leg"}, &externalStdout); err != nil {
+		t.Fatalf("writeDynamicCompletions summon-external returned error: %v", err)
+	}
+	if strings.Contains(externalStdout.String(), "legacy-tool") {
+		t.Fatalf("did not expect attached summon-external repo in completion output, got %q", externalStdout.String())
+	}
+}
+
 func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 	original := runPicker
 	t.Cleanup(func() { runPicker = original })
@@ -291,51 +335,10 @@ func TestResolveCommandRefsDismissWithoutCandidatesIsNoop(t *testing.T) {
 	}
 }
 
-func TestReconcileSelectionTreatsPickerCancellationAsNoop(t *testing.T) {
-	original := runPicker
-	t.Cleanup(func() { runPicker = original })
-
-	runPicker = func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error) {
-		return nil, errPickerCancelled
-	}
-
-	h := testutil.NewHarness(t)
-	for _, env := range h.Env() {
-		key, value, _ := strings.Cut(env, "=")
-		t.Setenv(key, value)
-	}
-	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
-
-	app := wsfold.NewApp()
-	var stdout bytes.Buffer
-	if err := reconcileSelection(app, h.Workspace, "summon-external", &stdout, &bytes.Buffer{}); err != nil {
-		t.Fatalf("reconcileSelection returned error: %v", err)
-	}
-	if !strings.Contains(stdout.String(), "Selection cancelled") {
-		t.Fatalf("expected neutral cancellation message, got %q", stdout.String())
-	}
-}
-
 func TestResolveCommandRefsRejectsExtraArgs(t *testing.T) {
 	_, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "summon accepts zero or one repo ref") {
 		t.Fatalf("unexpected resolveCommandRefs error: %v", err)
-	}
-}
-
-func TestPlanSelectionChanges(t *testing.T) {
-	candidates := []wsfold.CompletionCandidate{
-		{Value: "alpha", Attached: true},
-		{Value: "beta", Attached: false},
-		{Value: "gamma", Attached: true},
-	}
-
-	adds, removes := planSelectionChanges(candidates, []string{"alpha", "beta"})
-	if len(adds) != 1 || adds[0] != "beta" {
-		t.Fatalf("unexpected adds: %#v", adds)
-	}
-	if len(removes) != 1 || removes[0] != "gamma" {
-		t.Fatalf("unexpected removes: %#v", removes)
 	}
 }
 
@@ -352,7 +355,7 @@ if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
   exit 0
 fi
 if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "acme" ]; then
-  printf '%s\n' '[{"name":"service","nameWithOwner":"acme/service","isPrivate":false,"isArchived":false,"url":"https://github.com/acme/service"}]'
+  printf '%s\n' '[{"name":"service","nameWithOwner":"acme/service","isPrivate":false,"isArchived":false,"url":"https://github.com/acme/service"},{"name":"old-service","nameWithOwner":"acme/old-service","isPrivate":false,"isArchived":true,"url":"https://github.com/acme/old-service"}]'
   exit 0
 fi
 if [ "$1" = "repo" ] && [ "$2" = "list" ] && [ "$3" = "platform-team" ]; then
@@ -367,7 +370,7 @@ exit 1
 	if err := Run([]string{"reindex"}, &stdout, &bytes.Buffer{}); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "refreshed trusted index") {
+	if !strings.Contains(stdout.String(), "refreshed trusted index") || !strings.Contains(stdout.String(), "2 total repos, 1 non-archived") {
 		t.Fatalf("unexpected reindex output: %q", stdout.String())
 	}
 
@@ -375,8 +378,15 @@ exit 1
 	if err != nil {
 		t.Fatalf("loadTrustedCacheForTest returned error: %v", err)
 	}
-	if !ok || len(acmeCache.Repos) != 1 || acmeCache.Repos[0].FullName != "acme/service" {
+	if !ok || len(acmeCache.Repos) != 2 {
 		t.Fatalf("expected acme cache to be refreshed, got %#v", acmeCache)
+	}
+	var names []string
+	for _, repo := range acmeCache.Repos {
+		names = append(names, repo.FullName)
+	}
+	if !strings.Contains(strings.Join(names, ","), "acme/service") || !strings.Contains(strings.Join(names, ","), "acme/old-service") {
+		t.Fatalf("expected acme cache to contain refreshed repos, got %#v", acmeCache)
 	}
 	if time.Since(acmeCache.FetchedAt) > time.Minute {
 		t.Fatalf("expected cache timestamp to be current, got %#v", acmeCache)

@@ -113,6 +113,36 @@ func TestSummonMissingTrustedRepoRequiresAuthenticatedGitHubCLI(t *testing.T) {
 	}
 }
 
+func TestSummonMissingTrustedRepoUsesNotFoundMessage(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	externalRepo := filepath.Join(h.ExternalRoot, "legacy-tool")
+	h.InitRepo(externalRepo)
+	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/other/legacy-tool.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	err := app.Summon(h.Workspace, "asdf")
+	if err == nil {
+		t.Fatal("expected summon of unknown trusted repo to fail")
+	}
+	if !strings.Contains(err.Error(), `trusted repo "asdf" was not found locally under `) {
+		t.Fatalf("unexpected summon error: %v", err)
+	}
+	if !strings.Contains(err.Error(), h.TrustedRoot) {
+		t.Fatalf("expected summon error to include trusted root, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "or in trusted GitHub results") {
+		t.Fatalf("expected summon error to mention trusted GitHub results, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "use the local folder name or GitHub owner/name") {
+		t.Fatalf("expected summon error to suggest supported ref formats, got %v", err)
+	}
+}
+
 func TestSummonSupportsLocalFolderAlias(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
@@ -237,8 +267,106 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 		t.Fatalf("external checkout should remain on disk: %v", err)
 	}
 
-	if err := app.Dismiss(h.Workspace, "other/legacy-tool"); err != nil {
-		t.Fatalf("repeat dismiss should be idempotent: %v", err)
+	if err := app.Dismiss(h.Workspace, "other/legacy-tool"); err == nil {
+		t.Fatal("expected repeat dismiss to fail once repo is no longer attached")
+	} else if !strings.Contains(err.Error(), `repository "other/legacy-tool" is not part of the current workspace composition`) {
+		t.Fatalf("unexpected repeat dismiss error: %v", err)
+	}
+}
+
+func TestDismissReturnsNotFoundErrorForUnknownRepo(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	app := NewApp()
+	err := app.Dismiss(h.Workspace, "dsf")
+	if err == nil {
+		t.Fatal("expected dismiss of unknown repo to fail")
+	}
+	if !strings.Contains(err.Error(), "✗") {
+		t.Fatalf("expected dismiss error to include a cross marker, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `repository "dsf" is not part of the current workspace composition`) {
+		t.Fatalf("unexpected dismiss error: %v", err)
+	}
+}
+
+func TestDismissReturnsAmbiguityErrorForDuplicateShortName(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	trustedRepo := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(trustedRepo)
+	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	externalRepo := filepath.Join(h.ExternalRoot, "service")
+	h.InitRepo(externalRepo)
+	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/other/service.git")
+
+	app := NewApp()
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
+
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+	if err := app.SummonUntrusted(h.Workspace, "service"); err != nil {
+		t.Fatalf("SummonUntrusted returned error: %v", err)
+	}
+
+	err := app.Dismiss(h.Workspace, "service")
+	if err == nil {
+		t.Fatal("expected dismiss with duplicate short name to fail")
+	}
+	if !strings.Contains(err.Error(), `repository ref "service" is ambiguous; use the full repo name, for example acme/service`) {
+		t.Fatalf("unexpected dismiss ambiguity error: %v", err)
+	}
+}
+
+func TestDismissFullRepoNameWorksWhenShortNameIsAmbiguous(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	trustedRepo := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(trustedRepo)
+	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	externalRepo := filepath.Join(h.ExternalRoot, "service")
+	h.InitRepo(externalRepo)
+	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/other/service.git")
+
+	app := NewApp()
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
+
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+	if err := app.SummonUntrusted(h.Workspace, "service"); err != nil {
+		t.Fatalf("SummonUntrusted returned error: %v", err)
+	}
+
+	if err := app.Dismiss(h.Workspace, "other/service"); err != nil {
+		t.Fatalf("Dismiss with full repo name returned error: %v", err)
+	}
+
+	manifest, err := loadManifest(h.Workspace)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	if len(manifest.External) != 0 || len(manifest.Trusted) != 1 {
+		t.Fatalf("expected only external entry to be removed, got %+v", manifest)
 	}
 }
 

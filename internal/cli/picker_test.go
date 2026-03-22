@@ -530,7 +530,7 @@ func TestPickerModelRendersLocalFolderNameForDismissRows(t *testing.T) {
 	}
 }
 
-func TestPickerModelSearchUsesOnlyVisibleFields(t *testing.T) {
+func TestPickerModelSearchUsesVisibleSourceBadge(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
 		{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},
 	})
@@ -546,8 +546,27 @@ func TestPickerModelSearchUsesOnlyVisibleFields(t *testing.T) {
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
 	model = updated.(pickerModel)
 
-	if len(model.filtered) != 0 {
-		t.Fatalf("expected source marker to be excluded from search, got %#v", model.filtered)
+	if len(model.filtered) != 1 {
+		t.Fatalf("expected visible source marker to be searchable, got %#v", model.filtered)
+	}
+}
+
+func TestPickerModelSearchUsesVisibleDismissTrustBadge(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Value: "service", Name: "service", Description: "acme/service", TrustClass: wsfold.TrustClassTrusted, Attached: true},
+		{Value: "legacy-tool", Name: "legacy-tool", Description: "other/legacy-tool", TrustClass: wsfold.TrustClassExternal, Attached: true},
+	})
+
+	for _, r := range "external" {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(pickerModel)
+	}
+
+	if len(model.filtered) != 1 {
+		t.Fatalf("expected trust-class badge to be searchable, got %#v", model.filtered)
+	}
+	if model.filtered[0].candidate.Value != "legacy-tool" {
+		t.Fatalf("expected external row to match trust badge query, got %#v", model.filtered[0].candidate)
 	}
 }
 

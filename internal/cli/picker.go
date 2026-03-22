@@ -113,7 +113,7 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 	for _, candidate := range candidates {
 		items = append(items, pickerItem{
 			candidate: candidate,
-			search:    pickerSearchText(candidate),
+			search:    pickerSearchText(candidate, command),
 		})
 	}
 
@@ -277,7 +277,7 @@ func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate)
 	for _, candidate := range candidates {
 		items = append(items, pickerItem{
 			candidate: candidate,
-			search:    pickerSearchText(candidate),
+			search:    pickerSearchText(candidate, m.command),
 		})
 	}
 	m.items = items
@@ -490,8 +490,12 @@ func pickerPrimaryText(candidate wsfold.CompletionCandidate) string {
 	return candidate.Value
 }
 
-func pickerSearchText(candidate wsfold.CompletionCandidate) string {
+func pickerSearchText(candidate wsfold.CompletionCandidate, command string) string {
 	parts := []string{pickerPrimaryText(candidate)}
+
+	if source := strings.TrimSpace(pickerSourceLabel(candidate, command)); source != "" {
+		parts = append(parts, source)
+	}
 
 	detail := candidate.Slug
 	if detail == "" {

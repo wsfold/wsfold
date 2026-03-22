@@ -114,6 +114,77 @@ func TestCompleteDismissFromManifest(t *testing.T) {
 	}
 }
 
+func TestCompleteDismissKeepsTrustedAndExternalRowsWithSameValue(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setCompletionEnv(t, h)
+	initWorkspace(t, h)
+
+	trustedRepo := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(trustedRepo)
+	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	externalRepo := filepath.Join(h.ExternalRoot, "service")
+	h.InitRepo(externalRepo)
+	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/other/service.git")
+
+	app := NewApp()
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
+
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+	if err := app.SummonUntrusted(h.Workspace, "service"); err != nil {
+		t.Fatalf("SummonUntrusted returned error: %v", err)
+	}
+
+	candidates, err := app.Complete(h.Workspace, "dismiss", "")
+	if err != nil {
+		t.Fatalf("Complete dismiss returned error: %v", err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("expected both dismiss candidates to remain visible, got %#v", candidates)
+	}
+	if candidates[0].Value != "acme/service" || candidates[1].Value != "other/service" {
+		t.Fatalf("expected duplicate short names to fall back to full repo refs, got %#v", candidates)
+	}
+	if candidates[0].Key == candidates[1].Key {
+		t.Fatalf("expected dismiss candidates with same value to use different keys, got %#v", candidates)
+	}
+}
+
+func TestCompletionCandidatesFromReposKeepDistinctKeysForSameValue(t *testing.T) {
+	repos := []Repo{
+		{
+			Name:         "service",
+			CheckoutPath: "/trusted/service",
+			OriginURL:    "https://github.com/acme/service.git",
+			TrustClass:   TrustClassTrusted,
+		},
+		{
+			Name:         "service",
+			CheckoutPath: "/external/service",
+			OriginURL:    "https://github.com/other/service.git",
+			TrustClass:   TrustClassExternal,
+		},
+	}
+
+	candidates := completionCandidatesFromRepos(repos, map[string]bool{}, "s")
+	if len(candidates) != 2 {
+		t.Fatalf("expected repo candidates with same display value to survive dedupe, got %#v", candidates)
+	}
+	if candidates[0].Value != "service" || candidates[1].Value != "service" {
+		t.Fatalf("expected repo candidates to keep same value, got %#v", candidates)
+	}
+	if candidates[0].Key == candidates[1].Key {
+		t.Fatalf("expected repo candidates to use distinct internal keys, got %#v", candidates)
+	}
+}
+
 func TestTrustedSummonPickerStateMergesCachedRemoteReposAndPrefersLocal(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setCompletionEnv(t, h)

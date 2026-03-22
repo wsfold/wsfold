@@ -58,3 +58,47 @@ func TestManifestRoundTripMatchesGolden(t *testing.T) {
 		t.Fatalf("unexpected loaded manifest: %#v", loaded)
 	}
 }
+
+func TestResolveManifestEntryReturnsAmbiguityErrorWithFullRepoGuidance(t *testing.T) {
+	manifest := Manifest{
+		Trusted: []Entry{
+			{RepoRef: "acme/service", CheckoutPath: "/trusted/service", TrustClass: TrustClassTrusted},
+		},
+		External: []Entry{
+			{RepoRef: "other/service", CheckoutPath: "/external/service", TrustClass: TrustClassExternal},
+		},
+	}
+
+	_, ok, err := resolveManifestEntry(manifest, "service")
+	if ok {
+		t.Fatal("did not expect ambiguous short ref to resolve")
+	}
+	if err == nil {
+		t.Fatal("expected ambiguity error for duplicate short ref")
+	}
+	if !strings.Contains(err.Error(), `repository ref "service" is ambiguous; use the full repo name, for example acme/service`) {
+		t.Fatalf("unexpected ambiguity error: %v", err)
+	}
+}
+
+func TestResolveManifestEntryAcceptsFullRepoNameWhenShortNameIsAmbiguous(t *testing.T) {
+	manifest := Manifest{
+		Trusted: []Entry{
+			{RepoRef: "acme/service", CheckoutPath: "/trusted/service", TrustClass: TrustClassTrusted},
+		},
+		External: []Entry{
+			{RepoRef: "other/service", CheckoutPath: "/external/service", TrustClass: TrustClassExternal},
+		},
+	}
+
+	entry, ok, err := resolveManifestEntry(manifest, "other/service")
+	if err != nil {
+		t.Fatalf("resolveManifestEntry returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected exact repo ref to resolve")
+	}
+	if entry.RepoRef != "other/service" || entry.TrustClass != TrustClassExternal {
+		t.Fatalf("unexpected resolved entry: %#v", entry)
+	}
+}

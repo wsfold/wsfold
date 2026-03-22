@@ -144,20 +144,41 @@ func resolveManifestEntry(manifest Manifest, ref string) (Entry, bool, error) {
 		return exact[0], true, nil
 	}
 	if len(exact) > 1 {
-		return Entry{}, false, fmt.Errorf("repo ref %q is ambiguous in manifest", ref)
+		return Entry{}, false, manifestAmbiguityError(ref, exact)
 	}
 	if len(short) == 1 {
 		return short[0], true, nil
 	}
 	if len(short) > 1 {
-		return Entry{}, false, fmt.Errorf("repo ref %q is ambiguous in manifest", ref)
+		return Entry{}, false, manifestAmbiguityError(ref, short)
 	}
 	if len(local) == 1 {
 		return local[0], true, nil
 	}
 	if len(local) > 1 {
-		return Entry{}, false, fmt.Errorf("repo ref %q is ambiguous in manifest", ref)
+		return Entry{}, false, manifestAmbiguityError(ref, local)
 	}
 
 	return Entry{}, false, nil
+}
+
+func manifestAmbiguityError(ref string, entries []Entry) error {
+	examples := make([]string, 0, len(entries))
+	seen := map[string]struct{}{}
+	for _, entry := range entries {
+		repoRef := strings.TrimSpace(entry.RepoRef)
+		if repoRef == "" {
+			continue
+		}
+		if _, ok := seen[repoRef]; ok {
+			continue
+		}
+		seen[repoRef] = struct{}{}
+		examples = append(examples, repoRef)
+	}
+	sort.Strings(examples)
+	if len(examples) > 0 {
+		return fmt.Errorf("repository ref %q is ambiguous; use the full repo name, for example %s", ref, examples[0])
+	}
+	return fmt.Errorf("repository ref %q is ambiguous; use the full repo name", ref)
 }

@@ -29,9 +29,9 @@ func TestPickerModelEnterSelectsCurrentRowInSingleMode(t *testing.T) {
 
 func TestPickerModelSpaceEnablesMultiSelectAndTogglesItems(t *testing.T) {
 	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
-		{Value: "alpha"},
-		{Value: "beta"},
-		{Value: "gamma"},
+		{Key: "trusted|alpha", Value: "alpha"},
+		{Key: "trusted|beta", Value: "beta"},
+		{Key: "trusted|gamma", Value: "gamma"},
 	})
 
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
@@ -45,7 +45,7 @@ func TestPickerModelSpaceEnablesMultiSelectAndTogglesItems(t *testing.T) {
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	model = updated.(pickerModel)
-	if !model.selected["alpha"] {
+	if !model.selected["trusted|alpha"] {
 		t.Fatalf("expected current row to become selected after toggling in multi-select, got %#v", model.selected)
 	}
 
@@ -196,8 +196,8 @@ func TestPickerModelShowsCheckmarkForAttachedSummonRowInMultiMode(t *testing.T) 
 
 func TestPickerModelRefreshMessageMergesCandidatesAndPreservesMultiSelectState(t *testing.T) {
 	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
-		{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},
-		{Value: "acme/worker", Name: "worker", Slug: "acme/worker", Source: wsfold.CompletionSourceRemote},
+		{Key: "trusted|service", Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},
+		{Key: "trusted|worker", Value: "acme/worker", Name: "worker", Slug: "acme/worker", Source: wsfold.CompletionSourceRemote},
 	})
 	model.refreshing = true
 
@@ -212,16 +212,16 @@ func TestPickerModelRefreshMessageMergesCandidatesAndPreservesMultiSelectState(t
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	model = updated.(pickerModel)
-	if !model.selected["acme/worker"] {
+	if !model.selected["trusted|worker"] {
 		t.Fatalf("expected worker to remain selected, got %#v", model.selected)
 	}
 
 	updated, _ = model.Update(trustedSummonRefreshMsg{
 		state: wsfold.TrustedSummonPickerState{
 			Candidates: []wsfold.CompletionCandidate{
-				{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},
-				{Value: "acme/worker", Name: "worker", Slug: "acme/worker", Source: wsfold.CompletionSourceRemote},
-				{Value: "acme/worker-api", Name: "worker-api", Slug: "acme/worker-api", Source: wsfold.CompletionSourceRemote},
+				{Key: "trusted|service", Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},
+				{Key: "trusted|worker", Value: "acme/worker", Name: "worker", Slug: "acme/worker", Source: wsfold.CompletionSourceRemote},
+				{Key: "trusted|worker-api", Value: "acme/worker-api", Name: "worker-api", Slug: "acme/worker-api", Source: wsfold.CompletionSourceRemote},
 			},
 		},
 	})
@@ -230,7 +230,7 @@ func TestPickerModelRefreshMessageMergesCandidatesAndPreservesMultiSelectState(t
 	if model.input.Value() != "wo" {
 		t.Fatalf("expected filter query to be preserved, got %q", model.input.Value())
 	}
-	if !model.selected["acme/worker"] {
+	if !model.selected["trusted|worker"] {
 		t.Fatalf("expected previous selection to survive refresh, got %#v", model.selected)
 	}
 	if len(model.filtered) != 2 {
@@ -238,6 +238,55 @@ func TestPickerModelRefreshMessageMergesCandidatesAndPreservesMultiSelectState(t
 	}
 	if model.filtered[model.cursor].candidate.Value != "acme/worker" {
 		t.Fatalf("expected cursor to stay on previous candidate, got %#v", model.filtered[model.cursor].candidate)
+	}
+}
+
+func TestPickerModelKeepsDistinctSelectionsForDuplicateValues(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Key: "trusted|acme/service|/trusted/service", Value: "service", Name: "service", Description: "acme/service", TrustClass: wsfold.TrustClassTrusted},
+		{Key: "external|other/service|/external/service", Value: "service", Name: "service", Description: "other/service", TrustClass: wsfold.TrustClassExternal},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+
+	selected := model.selectedValues()
+	if len(selected) != 2 || selected[0] != "service" || selected[1] != "service" {
+		t.Fatalf("expected both duplicate-value rows to remain selected, got %#v", selected)
+	}
+
+	view := stripANSI(model.View())
+	if strings.Count(view, "Selected (2)") != 1 {
+		t.Fatalf("expected selected section to show both duplicate-value rows, got:\n%s", view)
+	}
+}
+
+func TestPickerModelRestoresCursorByKeyWhenValuesMatch(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Key: "trusted|acme/service|/trusted/service", Value: "service", Name: "service", Description: "acme/service", TrustClass: wsfold.TrustClassTrusted},
+		{Key: "external|other/service|/external/service", Value: "service", Name: "service", Description: "other/service", TrustClass: wsfold.TrustClassExternal},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(pickerModel)
+	if model.filtered[model.cursor].candidate.Key != "external|other/service|/external/service" {
+		t.Fatalf("expected cursor on external row before refresh, got %#v", model.filtered[model.cursor].candidate)
+	}
+
+	model.replaceCandidates([]wsfold.CompletionCandidate{
+		{Key: "trusted|acme/service|/trusted/service", Value: "service", Name: "service", Description: "acme/service", TrustClass: wsfold.TrustClassTrusted},
+		{Key: "external|other/service|/external/service", Value: "service", Name: "service", Description: "other/service", TrustClass: wsfold.TrustClassExternal},
+		{Key: "trusted|acme/worker|/trusted/worker", Value: "worker", Name: "worker", Description: "acme/worker", TrustClass: wsfold.TrustClassTrusted},
+	})
+
+	if model.filtered[model.cursor].candidate.Key != "external|other/service|/external/service" {
+		t.Fatalf("expected cursor to stay on same key after refresh, got %#v", model.filtered[model.cursor].candidate)
 	}
 }
 

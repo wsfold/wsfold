@@ -178,7 +178,7 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.isReadOnlyAttached(currentItem) {
 				return m, nil
 			}
-			current := currentItem.Value
+			current := candidateKey(currentItem)
 			if m.selected[current] {
 				delete(m.selected, current)
 			} else {
@@ -204,15 +204,15 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *pickerModel) refresh() {
-	currentValue := ""
+	currentKey := ""
 	if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
-		currentValue = m.filtered[m.cursor].candidate.Value
+		currentKey = candidateKey(m.filtered[m.cursor].candidate)
 	}
 
 	query := strings.TrimSpace(m.input.Value())
 	if query == "" {
 		m.filtered = append(m.filtered[:0], m.items...)
-		if m.restoreCursorForValue(currentValue) {
+		if m.restoreCursorForKey(currentKey) {
 			m.lastQuery = query
 			return
 		}
@@ -244,7 +244,7 @@ func (m *pickerModel) refresh() {
 		m.lastQuery = query
 		return
 	}
-	if m.restoreCursorForValue(currentValue) {
+	if m.restoreCursorForKey(currentKey) {
 		m.lastQuery = query
 		return
 	}
@@ -254,12 +254,12 @@ func (m *pickerModel) refresh() {
 	m.lastQuery = query
 }
 
-func (m *pickerModel) restoreCursorForValue(value string) bool {
-	if value == "" {
+func (m *pickerModel) restoreCursorForKey(key string) bool {
+	if key == "" {
 		return false
 	}
 	for i, item := range m.filtered {
-		if item.candidate.Value == value {
+		if candidateKey(item.candidate) == key {
 			m.cursor = i
 			return true
 		}
@@ -268,9 +268,9 @@ func (m *pickerModel) restoreCursorForValue(value string) bool {
 }
 
 func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate) {
-	currentValue := ""
+	currentKey := ""
 	if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
-		currentValue = m.filtered[m.cursor].candidate.Value
+		currentKey = candidateKey(m.filtered[m.cursor].candidate)
 	}
 
 	items := make([]pickerItem, 0, len(candidates))
@@ -283,11 +283,11 @@ func (m *pickerModel) replaceCandidates(candidates []wsfold.CompletionCandidate)
 	m.items = items
 	m.refresh()
 
-	if currentValue == "" {
+	if currentKey == "" {
 		return
 	}
 	for i, item := range m.filtered {
-		if item.candidate.Value == currentValue {
+		if candidateKey(item.candidate) == currentKey {
 			m.cursor = i
 			return
 		}
@@ -358,7 +358,7 @@ func (m pickerModel) View() string {
 				selectMarker = emptyMarkerStyle.Render("○")
 				if m.isReadOnlyAttached(item) {
 					selectMarker = attachedStyle.Render("✓")
-				} else if m.selected[item.Value] {
+				} else if m.selected[candidateKey(item)] {
 					selectMarker = markerStyle.Render("●")
 				}
 			}
@@ -407,7 +407,7 @@ func (m pickerModel) selectedValues() []string {
 
 	values := make([]string, 0, len(m.selected))
 	for _, item := range m.items {
-		if m.selected[item.candidate.Value] {
+		if m.selected[candidateKey(item.candidate)] {
 			values = append(values, item.candidate.Value)
 		}
 	}
@@ -421,7 +421,7 @@ func (m pickerModel) selectedItems() []pickerItem {
 
 	items := make([]pickerItem, 0, len(m.selected))
 	for _, item := range m.items {
-		if m.selected[item.candidate.Value] {
+		if m.selected[candidateKey(item.candidate)] {
 			items = append(items, item)
 		}
 	}
@@ -629,4 +629,11 @@ func truncateText(text string, width int) string {
 
 func displayWidth(text string) int {
 	return utf8.RuneCountInString(text)
+}
+
+func candidateKey(candidate wsfold.CompletionCandidate) string {
+	if candidate.Key != "" {
+		return candidate.Key
+	}
+	return candidate.Value
 }

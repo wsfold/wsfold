@@ -508,6 +508,28 @@ func TestPickerModelRendersTrustClassBadgesForDismissRows(t *testing.T) {
 	}
 }
 
+func TestPickerModelRendersLocalFolderNameForDismissRows(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{
+			Key:         "trusted|acme/service|/trusted/service",
+			Value:       "acme/service",
+			Name:        "service",
+			Description: "acme/service",
+			TrustClass:  wsfold.TrustClassTrusted,
+			Attached:    true,
+			Source:      wsfold.CompletionSourceLocal,
+		},
+	})
+
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "service  trusted  acme/service") {
+		t.Fatalf("expected dismiss row to render folder name in the left column, got:\n%s", view)
+	}
+	if strings.Contains(view, "acme/service  trusted  acme/service") {
+		t.Fatalf("did not expect dismiss row to render repo ref in the left column, got:\n%s", view)
+	}
+}
+
 func TestPickerModelSearchUsesOnlyVisibleFields(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
 		{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},

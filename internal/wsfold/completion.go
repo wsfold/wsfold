@@ -173,6 +173,8 @@ func (a *App) completeManifest(cwd string, prefix string) ([]CompletionCandidate
 			Description: description,
 			Attached:    true,
 			TrustClass:  entry.TrustClass,
+			Name:        completionFolderName(entry.CheckoutPath),
+			Source:      CompletionSourceLocal,
 		})
 	}
 
@@ -211,7 +213,7 @@ func completionCandidatesFromRepos(repos []Repo, attached map[string]bool, prefi
 			Description: description,
 			Attached:    attached[repo.CheckoutPath],
 			TrustClass:  repo.TrustClass,
-			Name:        repo.Name,
+			Name:        completionFolderName(repo.CheckoutPath),
 			Slug:        repo.Slug,
 			Source:      CompletionSourceLocal,
 		})

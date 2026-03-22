@@ -122,11 +122,16 @@ func helpText() string {
 		fmt.Fprintf(&b, "    %s; default: %s; %s\n", required, entry.Default, entry.Description)
 	}
 	b.WriteString("\n")
+	b.WriteString("  Example shell profile setup:\n")
+	b.WriteString("    export WSFOLD_TRUSTED_DIR=\"$HOME/repo/_prj\"\n")
+	b.WriteString("    export WSFOLD_EXTERNAL_DIR=\"$HOME/repo/_ext\"\n")
+	b.WriteString("    export WSFOLD_TRUSTED_GITHUB_ORGS=\"org_name,org_name2\"\n\n")
 
 	writeSection(&b, "Examples")
 	b.WriteString("  wsfold summon\n")
-	b.WriteString("  wsfold summon acme/service\n")
-	b.WriteString("  wsfold summon-external other/legacy-tool\n")
+	b.WriteString("  wsfold summon billing-service\n")
+	b.WriteString("  wsfold summon org_name/billing-service\n")
+	b.WriteString("  wsfold summon-external legacy-tool\n")
 	b.WriteString("  wsfold dismiss\n")
 	b.WriteString("  wsfold init\n")
 	b.WriteString("  wsfold reindex\n")

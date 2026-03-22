@@ -1,166 +1,142 @@
-# WSFold
+# WSFold - Workspace Composition Tool
 
-WSFold is a workspace manager for trusted and external repositories.
+## The Problem
 
-## Purpose
+Real software systems often require changes that span multiple repositories, and even when work stays within a single service, doing it correctly still depends on a clear understanding of neighboring systems.
 
-WSFold gives you a task-shaped alternative to a monorepo: a lightweight, temporary composition
-of exactly the repositories you need for the work in front of you. Summon what matters, keep the
-context tight, and dismiss it again when the task is done.
+One way to address this is a monorepo: put everything in one place and make the whole codebase available.
+But that comes with real costs. Monorepos expand the working context for both humans and LLM agents, put more load on the development environment, and usually depend on more complex build tooling. And once the codebase becomes too large, you still need ways to limit scope through partial checkouts or other workspace composition techniques.
 
-LLM agents get a targeted working context instead of the full repo universe, and humans see that
-same scope as a clear, visible workspace composition.
+## Solution
 
-It lets you summon a trusted repository that already exists locally or still lives on GitHub.
-Trusted remote repositories can be discovered and cloned automatically when needed. You can
-also dismiss repositories from the current workspace at any time.
+WSFold gives you a task-shaped alternative to a monorepo: a lightweight, temporary workspace composition of exactly the repositories you need for the work in front of you. Summon what matters, keep the context tight, and dismiss it again when the task is done.
 
-WSFold can add an external repository to the workspace so it is visible in editors and tools,
-including LLM-based workflows. When a workspace is initialized or updated, WSFold also maintains
-a `.code-workspace` file for Visual Studio Code.
+You keep trusted repositories in a local directory and can also define trusted GitHub organizations for repositories that have not yet been cloned. Work does not happen directly in those storage locations. Instead, you start from any task-specific workspace directory and use `wsfold` to attach the repositories you need as symlinks, remove them when they are no longer needed, and transparently clone trusted repositories on demand.
 
-Trusted repositories may be linked directly into the workspace layout. External repositories are
-handled differently: they are added as workspace roots, but are not symlinked into the trusted
-workspace tree. This helps preserve clear trust boundaries for agents and tools that treat the
-workspace as trusted by default.
+That model is useful for humans through an interactive CLI, but it becomes especially powerful when workspace composition is delegated to an LLM agent. Wrapped as an agent skill, `wsfold` lets an agent attach and dismiss repositories as needed for the task at hand. An example skill for this workflow is included in this repository.
 
-Current commands:
+Technically, `wsfold` is a lightweight wrapper around symlinks and Git. Its power comes from encoding a workspace composition pattern in software so it can be applied consistently at scale.
 
-- `wsfold init` for initializing a workspace in the current directory
-- `wsfold summon [repo-ref]` for trusted repository attachment, with a remote-aware picker when no ref is provided
-- `wsfold reindex` for refreshing the trusted GitHub remote cache
-- `wsfold summon-external [repo-ref]` for external repository visibility without symlink embedding
-- `wsfold dismiss [repo-ref]` for removing a repo from the current composition
-- deterministic `.wsfold/manifest.yaml` state
-- deterministic `<workspace-dirname>.code-workspace` generation for VS Code multi-root workspaces
+## Installation
 
-## Usage
+`wsfold` ships prebuilt binaries for macOS and Linux on `x86_64` and `ARM64`.
+Windows is not currently supported.
 
-Initialize once from the directory you want to treat as the primary workspace:
+Recommended installation method: Homebrew.
+
+### Install via Homebrew
+
+If Homebrew is not installed yet, see the official instructions at [brew.sh](https://brew.sh/).
 
 ```bash
-wsfold init
+brew tap wsfold/wsfold
+brew install wsfold
 ```
 
-After that, run commands from anywhere inside that workspace tree:
+To update later:
 
 ```bash
-wsfold summon acme/service
-wsfold reindex
-wsfold summon-external other/legacy-tool
-wsfold dismiss acme/service
+brew update
+brew upgrade wsfold
 ```
 
-If you omit `repo-ref`, `wsfold` opens an interactive Bubble Tea picker with live fuzzy filtering:
+### Install from GitHub Releases
+
+If Homebrew is not available, download the archive for your platform from the
+[GitHub Releases page](https://github.com/wsfold/wsfold/releases), extract the
+`wsfold` binary, and place it somewhere in your `PATH`.
+
+## Environment Setup
+
+Before using `wsfold`, add the following variables to your shell profile and replace the example paths with directories that match your local repository layout:
 
 ```bash
-wsfold summon
-wsfold summon-external
-wsfold dismiss
+export WSFOLD_TRUSTED_DIR="$HOME/repo/_prj"
+export WSFOLD_EXTERNAL_DIR="$HOME/repo/_ext"
+export WSFOLD_TRUSTED_GITHUB_ORGS="org_name,org_name2"
+export WSFOLD_PROJECTS_DIR="_prj"
 ```
 
-`wsfold summon` picker behavior:
+`WSFOLD_TRUSTED_DIR` is required. It should point to an existing local directory that contains repositories you are comfortable treating as trusted, including opening them in your editor and running LLM agents against them.
+`WSFOLD_EXTERNAL_DIR` is required. It should point to an existing local directory that contains repositories you may want visible in the workspace, but do not want to treat as trusted or link directly into the trusted workspace tree.
+`WSFOLD_TRUSTED_GITHUB_ORGS` is an optional comma-separated list of GitHub organization names. It is strongly recommended if your work involves repositories from one or more GitHub organizations you trust.
+`WSFOLD_PROJECTS_DIR` is optional. It controls the name of the parent directory used for trusted repository mounts inside the workspace. The default is `_prj`.
 
-- always shows local trusted repos immediately
-- includes cached remote repos from `WSFOLD_TRUSTED_GITHUB_ORGS` when available
-- refreshes trusted remote metadata in the background with `gh` and live-updates the open picker
-- clones trusted remote repos with `gh repo clone`
-- keeps shell completion local-only by design
+To use trusted remote discovery and on-demand cloning, install the GitHub CLI and authenticate with it:
 
-Zsh completion:
+```bash
+gh auth login
+```
+
+See the official GitHub CLI installation instructions at [cli.github.com](https://cli.github.com/).
+
+If you use Zsh, you can also enable shell completion by adding this to your shell profile:
 
 ```bash
 eval "$(wsfold completion zsh)"
 ```
 
-This local completion currently suggests:
-
-- trusted local repos for `wsfold summon`
-- external local repos for `wsfold summon-external`
-- repos already attached in the current workspace for `wsfold dismiss`
-
-`repo-ref` is slug-first:
-
-- `owner/name`
-- short repo name when the local repo index makes it unambiguous
-
-`summon` only works for repos classified as trusted.
-`summon-external` only works for repos classified as external.
-
-## Environment
-
-WSFold reads trust policy from environment variables:
+## Quickstart
 
 ```bash
-export WSFOLD_TRUSTED_DIR="$HOME/wsfold/trusted"
-export WSFOLD_EXTERNAL_DIR="$HOME/wsfold/external"
-export WSFOLD_TRUSTED_GITHUB_ORGS="acme,platform-team"
+# Initialize the current directory as a workspace root.
+wsfold init
+
+# From any subdirectory inside that workspace, open the interactive picker.
+wsfold summon
+
+# Attach a trusted repository by local folder name.
+wsfold summon service-name
+
+# Attach a trusted repository by GitHub owner/repo name, cloning on demand if trusted.
+wsfold summon org_name/service-name
+
+# Dismiss a repository interactively.
+wsfold dismiss
+
+# Dismiss a specific repository directly.
+wsfold dismiss service-name
 ```
 
-Rules:
+## Usage
 
-- repos under `WSFOLD_TRUSTED_DIR` are eligible for `./_prj/<name>` symlink mounting by default
-- repos under `WSFOLD_EXTERNAL_DIR` are never symlinked into the workspace tree
-- missing GitHub repos from trusted orgs may clone into `WSFOLD_TRUSTED_DIR` via `wsfold summon`
-- `wsfold summon` without a ref reads cached trusted GitHub repos from the user cache directory and refreshes them with `gh`
-- trusted remote summon clones use `gh repo clone`, following the user’s `gh` git protocol settings
-- `wsfold reindex` performs a blocking refresh of the trusted GitHub cache
-- run `gh auth login` to enable trusted remote refresh
-- `wsfold summon-external` does not clone from remote; it only attaches repos already present under `WSFOLD_EXTERNAL_DIR`
-- `WSFOLD_PROJECTS_DIR` optionally overrides the trusted mount directory name; default is `_prj`
+Commands:
 
-## Generated Files
+- `wsfold init`
+  Initialize the current directory as a workspace root. After that, commands can be run from any subdirectory inside the workspace tree. It creates `./.wsfold/manifest.yaml` and a matching `<workspace-dirname>.code-workspace` file.
 
-WSFold writes task-local state into the active workspace:
+- `wsfold summon [repo-ref]`
+  Attach a trusted repository to the current workspace. Works with trusted repositories already present under `WSFOLD_TRUSTED_DIR` and with trusted remote repositories from `WSFOLD_TRUSTED_GITHUB_ORGS`, which can be cloned on demand. Without `repo-ref`, opens an interactive picker.
 
-- `./.wsfold/manifest.yaml`
-- `./<workspace-dirname>.code-workspace`
-- `./_prj/<name>` for trusted attachments only by default
+- `wsfold summon-external [repo-ref]`
+  Add an external repository as a workspace root. Only works with repositories already present under `WSFOLD_EXTERNAL_DIR`. Without `repo-ref`, opens an interactive picker.
 
-Trusted repos are both symlinked under `_prj/` and added as VS Code roots.
-External repos are added only as VS Code roots.
+- `wsfold dismiss [repo-ref]`
+  Remove a repository from the current workspace composition. Without `repo-ref`, opens an interactive picker of attached repositories.
 
-## Development
+- `wsfold reindex`
+  Refresh the trusted GitHub remote cache. By default, the cache is refreshed in the background when `wsfold summon` opens and has a 24-hour lifetime. Use `reindex` to refresh it earlier.
 
-Run the automated suite with:
+`[repo-ref]` accepts two forms:
+- a local folder name
+- a GitHub repository reference in `owner/name` form
 
-```bash
-go test ./...
-```
+## Visual Studio Code, Cursor, and Windsurf Integration
 
-## Build and Release
+`wsfold` maintains a `.code-workspace` file alongside the workspace root. `wsfold init` creates this file even before any repositories are attached, so the workspace can be opened in Visual Studio Code and compatible editors such as Cursor and Windsurf from the start as a multi-root project.
 
-WSFold ships prebuilt release binaries for:
+Trusted repositories attached with `wsfold summon` are added to that `.code-workspace` file as additional roots. To avoid showing the same repository twice, `wsfold` excludes the trusted mount directory controlled by `WSFOLD_PROJECTS_DIR` from the main workspace tree, while keeping it available on disk at its real filesystem path.
 
-- macOS Apple Silicon (`darwin/arm64`)
-- macOS Intel (`darwin/amd64`)
-- Linux ARM64 (`linux/arm64`)
-- Linux x86_64 (`linux/amd64`)
+External repositories attached with `wsfold summon-external` are handled differently. They are added to the `.code-workspace` file as workspace roots, but are not symlinked into the trusted workspace tree.
 
-Local developer commands:
+As a result, the current repository composition is visible directly in the editor UI. To use this integration, open the project through the generated `.code-workspace` file rather than as a plain folder.
 
-```bash
-make test
-make build
-make release-check
-make release-snapshot
-```
+## External Repositories
 
-What they do:
+External repositories remain outside the trusted workspace tree on purpose. For a human, that means the editor can keep its normal trust prompts and safe-mode behavior for those roots. If a repository is trusted enough to be treated like part of the main workspace, it should usually be moved into the trusted repository set instead.
 
-- `make build` builds the current platform binary into `./dist/wsfold`
-- `make release-check` validates `.goreleaser.yml`
-- `make release-snapshot` creates the same multi-platform archives locally that GitHub Releases will publish
-- the release targets bootstrap a pinned `goreleaser` binary automatically into `./.bin/`, so no global `goreleaser` install is required
+The same boundary matters for LLM-driven workflows: external repositories are not treated as part of the default trusted workspace context. They can still be reached by an LLM agent, and the accompanying skill in this repository explicitly instructs agents to read the `.code-workspace` file, resolve the filesystem path of the external root, and access it under the existing file-access restrictions.
 
-Release flow:
+## License
 
-1. Push a SemVer tag with `v` prefix, for example `v0.0.1`.
-2. GitHub Actions runs tests and publishes release assets through GoReleaser.
-3. The release will contain:
-   - `wsfold_Darwin_x86_64.tar.gz`
-   - `wsfold_Darwin_arm64.tar.gz`
-   - `wsfold_Linux_x86_64.tar.gz`
-   - `wsfold_Linux_arm64.tar.gz`
-   - `checksums.txt`
-4. Update the Homebrew tap repo `wsfold/homebrew-wsfold` with the new version and checksums.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).

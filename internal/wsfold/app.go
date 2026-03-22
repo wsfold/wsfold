@@ -154,7 +154,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 		return err
 	}
 	if !ok {
-		return nil
+		return fmt.Errorf("%s repository is not part of the current workspace composition: %s", ansiRedBold+"✗"+ansiReset, ref)
 	}
 
 	if entry.TrustClass == TrustClassTrusted && entry.MountPath != "" {

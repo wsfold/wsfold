@@ -237,8 +237,28 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 		t.Fatalf("external checkout should remain on disk: %v", err)
 	}
 
-	if err := app.Dismiss(h.Workspace, "other/legacy-tool"); err != nil {
-		t.Fatalf("repeat dismiss should be idempotent: %v", err)
+	if err := app.Dismiss(h.Workspace, "other/legacy-tool"); err == nil {
+		t.Fatal("expected repeat dismiss to fail once repo is no longer attached")
+	} else if !strings.Contains(err.Error(), "repository is not part of the current workspace composition") {
+		t.Fatalf("unexpected repeat dismiss error: %v", err)
+	}
+}
+
+func TestDismissReturnsNotFoundErrorForUnknownRepo(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	app := NewApp()
+	err := app.Dismiss(h.Workspace, "dsf")
+	if err == nil {
+		t.Fatal("expected dismiss of unknown repo to fail")
+	}
+	if !strings.Contains(err.Error(), "✗") {
+		t.Fatalf("expected dismiss error to include a cross marker, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "repository is not part of the current workspace composition: dsf") {
+		t.Fatalf("unexpected dismiss error: %v", err)
 	}
 }
 

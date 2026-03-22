@@ -87,17 +87,17 @@ func TestPickerModelEnterDoesNothingInMultiSelectWithoutSelections(t *testing.T)
 	}
 }
 
-func TestPickerModelPreselectsAttachedReposForSummon(t *testing.T) {
+func TestPickerModelDoesNotPreselectAttachedReposForSummon(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
 		{Value: "alpha", Attached: true},
 		{Value: "beta", Attached: false},
 	})
 
-	if !model.selected["alpha"] {
-		t.Fatalf("expected attached repo to start selected, got %#v", model.selected)
+	if len(model.selected) != 0 {
+		t.Fatalf("did not expect attached repo to start selected, got %#v", model.selected)
 	}
-	if model.selected["beta"] {
-		t.Fatalf("did not expect unattached repo to start selected, got %#v", model.selected)
+	if model.multiSelect {
+		t.Fatalf("did not expect summon picker to start in multi-select mode")
 	}
 }
 
@@ -116,16 +116,81 @@ func TestPickerModelDoesNotPreselectDismissCandidates(t *testing.T) {
 
 func TestPickerModelRendersSourceMarkersAndStatus(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
-		{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},
+		{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal, Attached: true},
 		{Value: "acme/worker", Name: "worker", Slug: "acme/worker", Source: wsfold.CompletionSourceRemote},
 	})
 	model.status = "remote index unavailable: gh is not installed"
 
 	view := model.View()
-	for _, expected := range []string{"service", "local", "acme/service", "worker", "remote", "Choose a trusted repository to include in your workspace [Single mode]", "gh is not installed"} {
+	for _, expected := range []string{"service", "attached", "acme/service", "worker", "remote", "Choose a trusted repository to include in your workspace [Single mode]", "gh is not installed"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("expected picker view to contain %q, got:\n%s", expected, view)
 		}
+	}
+}
+
+func TestPickerModelRendersAddedLabelForAttachedSummonExternalRow(t *testing.T) {
+	model := newPickerModel("summon-external", []wsfold.CompletionCandidate{
+		{Value: "legacy-tool", Name: "legacy-tool", Slug: "acme/legacy-tool", Source: wsfold.CompletionSourceLocal, Attached: true},
+		{Value: "extra-tool", Name: "extra-tool", Slug: "acme/extra-tool", Source: wsfold.CompletionSourceLocal},
+	})
+
+	view := model.View()
+	if !strings.Contains(view, "added") {
+		t.Fatalf("expected summon-external attached row to use added label, got:\n%s", view)
+	}
+	if strings.Contains(view, "attached") {
+		t.Fatalf("did not expect summon-external attached row to use attached label, got:\n%s", view)
+	}
+}
+
+func TestPickerModelEnterDoesNothingForAttachedSummonRowInSingleMode(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha", Attached: true},
+		{Value: "beta", Name: "beta"},
+	})
+	model.multiSelect = false
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(pickerModel)
+
+	if cmd != nil {
+		t.Fatalf("did not expect enter to quit for attached row in single mode")
+	}
+	if got := model.selectedValues(); len(got) != 0 {
+		t.Fatalf("did not expect attached row to resolve to a single-select value, got %#v", got)
+	}
+}
+
+func TestPickerModelSpaceDoesNothingForAttachedSummonRowInMultiMode(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha", Attached: true},
+		{Value: "beta", Name: "beta"},
+	})
+	model.multiSelect = true
+
+	initialSelectionCount := len(model.selected)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+
+	if len(model.selected) != initialSelectionCount {
+		t.Fatalf("did not expect attached row to toggle in multi mode, got %#v", model.selected)
+	}
+}
+
+func TestPickerModelShowsCheckmarkForAttachedSummonRowInMultiMode(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{Value: "alpha", Name: "alpha", Attached: true},
+		{Value: "beta", Name: "beta"},
+	})
+	model.multiSelect = true
+
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "✓ alpha") {
+		t.Fatalf("expected attached row to render a checkmark marker in multi mode, got:\n%s", view)
+	}
+	if strings.Contains(view, "○ alpha") {
+		t.Fatalf("did not expect attached row to render a toggle marker in multi mode, got:\n%s", view)
 	}
 }
 
@@ -196,11 +261,11 @@ func TestPickerModelShowsSelectedItemsInSeparateSectionWhileFiltering(t *testing
 		t.Fatalf("expected cursor to point at the visible match, got %d", model.cursor)
 	}
 	view := stripANSI(model.View())
-	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Multi mode]") {
-		t.Fatalf("expected multi-select title badge, got:\n%s", view)
+	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Single mode]") {
+		t.Fatalf("expected single-select title badge without explicit selections, got:\n%s", view)
 	}
-	if !strings.Contains(view, "Selected (2)") {
-		t.Fatalf("expected separate selected section, got:\n%s", view)
+	if strings.Contains(view, "Selected (") {
+		t.Fatalf("did not expect selected section without explicit selections, got:\n%s", view)
 	}
 }
 
@@ -322,7 +387,7 @@ func TestPickerModelDoesNotReorderSelectedItemsWhenScrollingPastVisibleWindow(t 
 
 func TestPickerModelAlignsColumnsForSummonRows(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
-		{Value: "mikhail-yaskou/assistant", Name: "assistant", Slug: "mikhail-yaskou/assistant", Source: wsfold.CompletionSourceLocal},
+		{Value: "mikhail-yaskou/assistant", Name: "assistant", Slug: "mikhail-yaskou/assistant", Source: wsfold.CompletionSourceLocal, Attached: true},
 		{Value: "atilarum/observability", Name: "observability", Slug: "atilarum/observability", Source: wsfold.CompletionSourceRemote},
 	})
 
@@ -330,8 +395,16 @@ func TestPickerModelAlignsColumnsForSummonRows(t *testing.T) {
 	lines := strings.Split(view, "\n")
 
 	var rowLines []string
+	inResults := false
 	for _, line := range lines {
-		if strings.Contains(line, "assistant") || strings.Contains(line, "observability") {
+		switch {
+		case strings.TrimSpace(line) == "Results":
+			inResults = true
+			continue
+		case strings.HasPrefix(strings.TrimSpace(line), "Showing "):
+			inResults = false
+		}
+		if inResults && (strings.Contains(line, "assistant") || strings.Contains(line, "observability")) {
 			rowLines = append(rowLines, line)
 		}
 	}
@@ -339,7 +412,7 @@ func TestPickerModelAlignsColumnsForSummonRows(t *testing.T) {
 		t.Fatalf("expected 2 picker rows, got %d in view:\n%s", len(rowLines), view)
 	}
 
-	firstSource := strings.Index(rowLines[0], "local")
+	firstSource := strings.Index(rowLines[0], "attached")
 	secondSource := strings.Index(rowLines[1], "remote")
 	if firstSource == -1 || secondSource == -1 {
 		t.Fatalf("expected source markers in rows:\n%s", strings.Join(rowLines, "\n"))
@@ -457,19 +530,23 @@ func TestPickerModelShowsTwentyVisibleRows(t *testing.T) {
 
 func TestPickerModelUsesMultiSelectHintWhenSelectionsExist(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
-		{Value: "alpha", Name: "alpha", Attached: true},
+		{Value: "alpha", Name: "alpha"},
 		{Value: "beta", Name: "beta"},
 	})
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
 
 	view := stripANSI(model.View())
 	if !strings.Contains(view, "Space toggle, Enter apply, Esc cancel") {
 		t.Fatalf("expected multi-select hint for preselected summon picker, got:\n%s", view)
 	}
 	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Multi mode]") {
-		t.Fatalf("expected multi-select title badge for preselected summon picker, got:\n%s", view)
+		t.Fatalf("expected multi-select title badge for summon picker, got:\n%s", view)
 	}
 	if !strings.Contains(view, "Selected (1)") {
-		t.Fatalf("expected selected section for preselected summon picker, got:\n%s", view)
+		t.Fatalf("expected selected section for summon picker, got:\n%s", view)
 	}
 }
 

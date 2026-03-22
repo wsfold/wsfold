@@ -124,16 +124,6 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 		selected:    map[string]bool{},
 		multiSelect: false,
 	}
-	if command == "summon" || command == "summon-external" {
-		for _, candidate := range candidates {
-			if candidate.Attached {
-				model.selected[candidate.Value] = true
-			}
-		}
-		if len(model.selected) > 0 {
-			model.multiSelect = true
-		}
-	}
 	model.refresh()
 	return model
 }
@@ -184,7 +174,11 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.multiSelect = true
 				return m, nil
 			}
-			current := m.filtered[m.cursor].candidate.Value
+			currentItem := m.filtered[m.cursor].candidate
+			if m.isReadOnlyAttached(currentItem) {
+				return m, nil
+			}
+			current := currentItem.Value
 			if m.selected[current] {
 				delete(m.selected, current)
 			} else {
@@ -193,6 +187,9 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refresh()
 			return m, nil
 		case "enter":
+			if !m.multiSelect && m.isCurrentRowReadOnlyAttached() {
+				return m, nil
+			}
 			if m.multiSelect && len(m.selected) == 0 {
 				return m, nil
 			}
@@ -311,6 +308,20 @@ func (m *pickerModel) moveCursor(delta int) {
 	}
 }
 
+func (m pickerModel) isReadOnlyAttached(candidate wsfold.CompletionCandidate) bool {
+	if !candidate.Attached {
+		return false
+	}
+	return m.command == "summon" || m.command == "summon-external"
+}
+
+func (m pickerModel) isCurrentRowReadOnlyAttached() bool {
+	if len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
+		return false
+	}
+	return m.isReadOnlyAttached(m.filtered[m.cursor].candidate)
+}
+
 func (m pickerModel) View() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
@@ -319,6 +330,7 @@ func (m pickerModel) View() string {
 	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	emptyMarkerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 	markerStyle := lipgloss.NewStyle().Foreground(selectionMarkerColor(m.command))
+	attachedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	localStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	remoteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
 	slugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
@@ -335,18 +347,20 @@ func (m pickerModel) View() string {
 		lines = append(lines, hintStyle.Render("No matches"))
 	} else {
 		start, end := visibleRange(m.cursor, len(m.filtered), pickerVisibleItems)
-		nameWidth, sourceWidth := pickerColumnWidths(m.filtered[start:end])
+		nameWidth, sourceWidth := pickerColumnWidths(m.filtered[start:end], m.command)
 		for i := start; i < end; i++ {
 			item := m.filtered[i].candidate
 			prefix := "  "
 			selectMarker := " "
 			if m.multiSelect {
 				selectMarker = emptyMarkerStyle.Render("○")
-				if m.selected[item.Value] {
+				if m.isReadOnlyAttached(item) {
+					selectMarker = attachedStyle.Render("✓")
+				} else if m.selected[item.Value] {
 					selectMarker = markerStyle.Render("●")
 				}
 			}
-			render := renderPickerRow(item, selectMarker, nameWidth, sourceWidth, localStyle, remoteStyle, slugStyle, descStyle, i == m.cursor)
+			render := renderPickerRow(item, m.command, selectMarker, nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, slugStyle, descStyle, i == m.cursor)
 			if i == m.cursor {
 				prefix = "> "
 				render = selectedStyle.Render(render)
@@ -359,9 +373,9 @@ func (m pickerModel) View() string {
 	if selectedItems := m.selectedItems(); len(selectedItems) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, selectedSectionStyle.Render(fmt.Sprintf("Selected (%d)", len(selectedItems))))
-		nameWidth, sourceWidth := pickerColumnWidths(selectedItems)
+		nameWidth, sourceWidth := pickerColumnWidths(selectedItems, m.command)
 		for _, item := range selectedItems {
-			lines = append(lines, "  "+renderPickerRow(item.candidate, " ", nameWidth, sourceWidth, localStyle, remoteStyle, slugStyle, descStyle, false))
+			lines = append(lines, "  "+renderPickerRow(item.candidate, m.command, " ", nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, slugStyle, descStyle, false))
 		}
 	}
 
@@ -379,7 +393,11 @@ func (m pickerModel) selectedValues() []string {
 		if len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
 			return nil
 		}
-		return []string{m.filtered[m.cursor].candidate.Value}
+		current := m.filtered[m.cursor].candidate
+		if m.isReadOnlyAttached(current) {
+			return nil
+		}
+		return []string{current.Value}
 	}
 	if len(m.selected) == 0 {
 		return nil
@@ -493,9 +511,11 @@ func refreshTrustedSummonPickerCmd(app *wsfold.App, cwd string) tea.Cmd {
 
 func renderPickerRow(
 	candidate wsfold.CompletionCandidate,
+	command string,
 	selectMarker string,
 	nameWidth int,
 	sourceWidth int,
+	attachedStyle lipgloss.Style,
 	localStyle lipgloss.Style,
 	remoteStyle lipgloss.Style,
 	slugStyle lipgloss.Style,
@@ -505,9 +525,9 @@ func renderPickerRow(
 	name := lipgloss.NewStyle().Width(nameWidth).Render(truncateText(pickerPrimaryText(candidate), nameWidth))
 	row := fmt.Sprintf("%s %s", selectMarker, name)
 
-	if candidate.Source != "" {
-		sourceText := lipgloss.NewStyle().Width(sourceWidth).Render(string(candidate.Source))
-		row = fmt.Sprintf("%s  %s", row, renderSourceMarkerText(candidate.Source, sourceText, localStyle, remoteStyle))
+	if sourceText := pickerSourceLabel(candidate, command); sourceText != "" {
+		sourceText = lipgloss.NewStyle().Width(sourceWidth).Render(sourceText)
+		row = fmt.Sprintf("%s  %s", row, renderSourceMarkerText(candidate, command, sourceText, attachedStyle, localStyle, remoteStyle))
 	}
 
 	detail := candidate.Slug
@@ -528,12 +548,12 @@ func renderPickerRow(
 	return row
 }
 
-func pickerColumnWidths(items []pickerItem) (int, int) {
+func pickerColumnWidths(items []pickerItem, command string) (int, int) {
 	nameWidth := 0
 	sourceWidth := 0
 	for _, item := range items {
 		nameWidth = max(nameWidth, min(displayWidth(pickerPrimaryText(item.candidate)), 28))
-		sourceWidth = max(sourceWidth, displayWidth(string(item.candidate.Source)))
+		sourceWidth = max(sourceWidth, displayWidth(pickerSourceLabel(item.candidate, command)))
 	}
 	if nameWidth == 0 {
 		nameWidth = 1
@@ -544,8 +564,21 @@ func pickerColumnWidths(items []pickerItem) (int, int) {
 	return nameWidth, sourceWidth
 }
 
-func renderSourceMarkerText(source wsfold.CompletionSource, text string, localStyle lipgloss.Style, remoteStyle lipgloss.Style) string {
-	switch source {
+func pickerSourceLabel(candidate wsfold.CompletionCandidate, command string) string {
+	if candidate.Attached && command == "summon" {
+		return "attached"
+	}
+	if candidate.Attached && command == "summon-external" {
+		return "added"
+	}
+	return string(candidate.Source)
+}
+
+func renderSourceMarkerText(candidate wsfold.CompletionCandidate, command string, text string, attachedStyle lipgloss.Style, localStyle lipgloss.Style, remoteStyle lipgloss.Style) string {
+	if candidate.Attached && (command == "summon" || command == "summon-external") {
+		return attachedStyle.Render(text)
+	}
+	switch candidate.Source {
 	case wsfold.CompletionSourceLocal:
 		return localStyle.Render(text)
 	case wsfold.CompletionSourceRemote:

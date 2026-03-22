@@ -291,51 +291,10 @@ func TestResolveCommandRefsDismissWithoutCandidatesIsNoop(t *testing.T) {
 	}
 }
 
-func TestReconcileSelectionTreatsPickerCancellationAsNoop(t *testing.T) {
-	original := runPicker
-	t.Cleanup(func() { runPicker = original })
-
-	runPicker = func(app *wsfold.App, cwd string, command string, stdout io.Writer, stderr io.Writer) ([]string, error) {
-		return nil, errPickerCancelled
-	}
-
-	h := testutil.NewHarness(t)
-	for _, env := range h.Env() {
-		key, value, _ := strings.Cut(env, "=")
-		t.Setenv(key, value)
-	}
-	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
-
-	app := wsfold.NewApp()
-	var stdout bytes.Buffer
-	if err := reconcileSelection(app, h.Workspace, "summon-external", &stdout, &bytes.Buffer{}); err != nil {
-		t.Fatalf("reconcileSelection returned error: %v", err)
-	}
-	if !strings.Contains(stdout.String(), "Selection cancelled") {
-		t.Fatalf("expected neutral cancellation message, got %q", stdout.String())
-	}
-}
-
 func TestResolveCommandRefsRejectsExtraArgs(t *testing.T) {
 	_, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "summon accepts zero or one repo ref") {
 		t.Fatalf("unexpected resolveCommandRefs error: %v", err)
-	}
-}
-
-func TestPlanSelectionChanges(t *testing.T) {
-	candidates := []wsfold.CompletionCandidate{
-		{Value: "alpha", Attached: true},
-		{Value: "beta", Attached: false},
-		{Value: "gamma", Attached: true},
-	}
-
-	adds, removes := planSelectionChanges(candidates, []string{"alpha", "beta"})
-	if len(adds) != 1 || adds[0] != "beta" {
-		t.Fatalf("unexpected adds: %#v", adds)
-	}
-	if len(removes) != 1 || removes[0] != "gamma" {
-		t.Fatalf("unexpected removes: %#v", removes)
 	}
 }
 

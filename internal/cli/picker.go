@@ -333,6 +333,8 @@ func (m pickerModel) View() string {
 	attachedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	localStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	remoteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+	trustedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	externalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	slugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
 	lines := []string{
@@ -360,7 +362,7 @@ func (m pickerModel) View() string {
 					selectMarker = markerStyle.Render("●")
 				}
 			}
-			render := renderPickerRow(item, m.command, selectMarker, nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, slugStyle, descStyle, i == m.cursor)
+			render := renderPickerRow(item, m.command, selectMarker, nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, descStyle, i == m.cursor)
 			if i == m.cursor {
 				prefix = "> "
 				render = selectedStyle.Render(render)
@@ -375,7 +377,7 @@ func (m pickerModel) View() string {
 		lines = append(lines, selectedSectionStyle.Render(fmt.Sprintf("Selected (%d)", len(selectedItems))))
 		nameWidth, sourceWidth := pickerColumnWidths(selectedItems, m.command)
 		for _, item := range selectedItems {
-			lines = append(lines, "  "+renderPickerRow(item.candidate, m.command, " ", nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, slugStyle, descStyle, false))
+			lines = append(lines, "  "+renderPickerRow(item.candidate, m.command, " ", nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, descStyle, false))
 		}
 	}
 
@@ -518,6 +520,8 @@ func renderPickerRow(
 	attachedStyle lipgloss.Style,
 	localStyle lipgloss.Style,
 	remoteStyle lipgloss.Style,
+	trustedStyle lipgloss.Style,
+	externalStyle lipgloss.Style,
 	slugStyle lipgloss.Style,
 	descStyle lipgloss.Style,
 	active bool,
@@ -527,7 +531,7 @@ func renderPickerRow(
 
 	if sourceText := pickerSourceLabel(candidate, command); sourceText != "" {
 		sourceText = lipgloss.NewStyle().Width(sourceWidth).Render(sourceText)
-		row = fmt.Sprintf("%s  %s", row, renderSourceMarkerText(candidate, command, sourceText, attachedStyle, localStyle, remoteStyle))
+		row = fmt.Sprintf("%s  %s", row, renderSourceMarkerText(candidate, command, sourceText, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle))
 	}
 
 	detail := candidate.Slug
@@ -571,12 +575,28 @@ func pickerSourceLabel(candidate wsfold.CompletionCandidate, command string) str
 	if candidate.Attached && command == "summon-external" {
 		return "added"
 	}
+	if command == "dismiss" {
+		switch candidate.TrustClass {
+		case wsfold.TrustClassTrusted:
+			return "trusted"
+		case wsfold.TrustClassExternal:
+			return "external"
+		}
+	}
 	return string(candidate.Source)
 }
 
-func renderSourceMarkerText(candidate wsfold.CompletionCandidate, command string, text string, attachedStyle lipgloss.Style, localStyle lipgloss.Style, remoteStyle lipgloss.Style) string {
+func renderSourceMarkerText(candidate wsfold.CompletionCandidate, command string, text string, attachedStyle lipgloss.Style, localStyle lipgloss.Style, remoteStyle lipgloss.Style, trustedStyle lipgloss.Style, externalStyle lipgloss.Style) string {
 	if candidate.Attached && (command == "summon" || command == "summon-external") {
 		return attachedStyle.Render(text)
+	}
+	if command == "dismiss" {
+		switch candidate.TrustClass {
+		case wsfold.TrustClassTrusted:
+			return trustedStyle.Render(text)
+		case wsfold.TrustClassExternal:
+			return externalStyle.Render(text)
+		}
 	}
 	switch candidate.Source {
 	case wsfold.CompletionSourceLocal:

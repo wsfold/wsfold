@@ -422,6 +422,43 @@ func TestPickerModelAlignsColumnsForSummonRows(t *testing.T) {
 	}
 }
 
+func TestPickerModelRendersTrustClassBadgesForDismissRows(t *testing.T) {
+	model := newPickerModel("dismiss", []wsfold.CompletionCandidate{
+		{Value: "service", Description: "acme/service", TrustClass: wsfold.TrustClassTrusted, Attached: true},
+		{Value: "legacy-tool", Description: "other/legacy-tool", TrustClass: wsfold.TrustClassExternal, Attached: true},
+	})
+
+	view := stripANSI(model.View())
+	lines := strings.Split(view, "\n")
+
+	var rowLines []string
+	inResults := false
+	for _, line := range lines {
+		switch {
+		case strings.TrimSpace(line) == "Results":
+			inResults = true
+			continue
+		case strings.HasPrefix(strings.TrimSpace(line), "Showing "):
+			inResults = false
+		}
+		if inResults && (strings.Contains(line, "service") || strings.Contains(line, "legacy-tool")) {
+			rowLines = append(rowLines, line)
+		}
+	}
+	if len(rowLines) != 2 {
+		t.Fatalf("expected 2 dismiss rows, got %d in view:\n%s", len(rowLines), view)
+	}
+
+	firstBadge := strings.Index(rowLines[0], "trusted")
+	secondBadge := strings.Index(rowLines[1], "external")
+	if firstBadge == -1 || secondBadge == -1 {
+		t.Fatalf("expected trust-class badges in dismiss rows:\n%s", strings.Join(rowLines, "\n"))
+	}
+	if firstBadge != secondBadge {
+		t.Fatalf("expected aligned dismiss trust-class column, got:\n%s", strings.Join(rowLines, "\n"))
+	}
+}
+
 func TestPickerModelSearchUsesOnlyVisibleFields(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
 		{Value: "service", Name: "service", Slug: "acme/service", Source: wsfold.CompletionSourceLocal},

@@ -12,6 +12,7 @@ type CompletionCandidate struct {
 	Value       string
 	Description string
 	Attached    bool
+	TrustClass  TrustClass
 	Name        string
 	Slug        string
 	Source      CompletionSource
@@ -168,6 +169,7 @@ func (a *App) completeManifest(cwd string, prefix string) ([]CompletionCandidate
 			Value:       value,
 			Description: description,
 			Attached:    true,
+			TrustClass:  entry.TrustClass,
 		})
 	}
 

@@ -113,6 +113,36 @@ func TestSummonMissingTrustedRepoRequiresAuthenticatedGitHubCLI(t *testing.T) {
 	}
 }
 
+func TestSummonMissingTrustedRepoUsesNotFoundMessage(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	externalRepo := filepath.Join(h.ExternalRoot, "legacy-tool")
+	h.InitRepo(externalRepo)
+	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/other/legacy-tool.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	err := app.Summon(h.Workspace, "asdf")
+	if err == nil {
+		t.Fatal("expected summon of unknown trusted repo to fail")
+	}
+	if !strings.Contains(err.Error(), `trusted repo "asdf" was not found locally under `) {
+		t.Fatalf("unexpected summon error: %v", err)
+	}
+	if !strings.Contains(err.Error(), h.TrustedRoot) {
+		t.Fatalf("expected summon error to include trusted root, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "or in trusted GitHub results") {
+		t.Fatalf("expected summon error to mention trusted GitHub results, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "use the local folder name or GitHub owner/name") {
+		t.Fatalf("expected summon error to suggest supported ref formats, got %v", err)
+	}
+}
+
 func TestSummonSupportsLocalFolderAlias(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
@@ -239,7 +269,7 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 
 	if err := app.Dismiss(h.Workspace, "other/legacy-tool"); err == nil {
 		t.Fatal("expected repeat dismiss to fail once repo is no longer attached")
-	} else if !strings.Contains(err.Error(), "repository is not part of the current workspace composition") {
+	} else if !strings.Contains(err.Error(), `repository "other/legacy-tool" is not part of the current workspace composition`) {
 		t.Fatalf("unexpected repeat dismiss error: %v", err)
 	}
 }
@@ -257,7 +287,7 @@ func TestDismissReturnsNotFoundErrorForUnknownRepo(t *testing.T) {
 	if !strings.Contains(err.Error(), "✗") {
 		t.Fatalf("expected dismiss error to include a cross marker, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "repository is not part of the current workspace composition: dsf") {
+	if !strings.Contains(err.Error(), `repository "dsf" is not part of the current workspace composition`) {
 		t.Fatalf("unexpected dismiss error: %v", err)
 	}
 }

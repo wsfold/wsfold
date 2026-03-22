@@ -218,7 +218,7 @@ func findOrCloneRepo(cfg Config, runner Runner, progress io.Writer, ref string, 
 	switch requested {
 	case TrustClassTrusted:
 		if classification != TrustClassTrusted {
-			return Repo{}, fmt.Errorf("repo ref %q is not classified as trusted; use summon-external for local external repos only", ref)
+			return Repo{}, fmt.Errorf("trusted repo %q was not found locally under %s or in trusted GitHub results; use the local folder name or GitHub owner/name", ref, cfg.TrustedDir)
 		}
 	case TrustClassExternal:
 		if classification == TrustClassTrusted {
@@ -254,7 +254,7 @@ func cloneTrustedGitHubRepo(runner Runner, progress io.Writer, owner string, nam
 	}
 
 	if progress != nil {
-		repoRef := ansiCyanBold + owner+"/"+name + ansiReset
+		repoRef := ansiCyanBold + owner + "/" + name + ansiReset
 		_, _ = fmt.Fprintf(progress, "%s Cloning repository: %s\n", ansiGreenBold+"→"+ansiReset, repoRef)
 	}
 

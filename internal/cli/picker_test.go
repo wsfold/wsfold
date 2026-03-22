@@ -171,12 +171,12 @@ func TestPickerModelRefreshMessageMergesCandidatesAndPreservesMultiSelectState(t
 	if len(model.filtered) != 2 {
 		t.Fatalf("expected refreshed results to respect current filter, got %#v", model.filtered)
 	}
-	if model.filtered[0].candidate.Value != "acme/worker" {
-		t.Fatalf("expected cursor to stay on previous candidate, got %#v", model.filtered[0].candidate)
+	if model.filtered[model.cursor].candidate.Value != "acme/worker" {
+		t.Fatalf("expected cursor to stay on previous candidate, got %#v", model.filtered[model.cursor].candidate)
 	}
 }
 
-func TestPickerModelPinsSelectedItemsWhileFilteringInMultiSelectMode(t *testing.T) {
+func TestPickerModelShowsSelectedItemsInSeparateSectionWhileFiltering(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
 		{Value: "alpha", Name: "alpha", Attached: true},
 		{Value: "beta", Name: "beta", Attached: true},
@@ -186,18 +186,21 @@ func TestPickerModelPinsSelectedItemsWhileFilteringInMultiSelectMode(t *testing.
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model = updated.(pickerModel)
 
-	if len(model.filtered) != 3 {
-		t.Fatalf("expected selected items to remain visible while filtering, got %#v", model.filtered)
+	if len(model.filtered) != 1 {
+		t.Fatalf("expected filtered list to contain only matches, got %#v", model.filtered)
 	}
-	if model.filtered[0].candidate.Value != "alpha" || model.filtered[1].candidate.Value != "beta" || model.filtered[2].candidate.Value != "gamma" {
-		t.Fatalf("expected selected items to stay pinned ahead of matches, got %#v", model.filtered)
+	if model.filtered[0].candidate.Value != "gamma" {
+		t.Fatalf("expected matching item to remain in place, got %#v", model.filtered)
 	}
-	if model.cursor != 2 {
-		t.Fatalf("expected cursor to jump to first non-selected match below pinned selections, got %d", model.cursor)
+	if model.cursor != 0 {
+		t.Fatalf("expected cursor to point at the visible match, got %d", model.cursor)
 	}
 	view := stripANSI(model.View())
 	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Multi mode]") {
 		t.Fatalf("expected multi-select title badge, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Selected (2)") {
+		t.Fatalf("expected separate selected section, got:\n%s", view)
 	}
 }
 
@@ -241,8 +244,8 @@ func TestPickerModelDeselectedNonMatchingItemsDisappearFromFilteredList(t *testi
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	model = updated.(pickerModel)
-	if len(model.filtered) != 2 || model.filtered[0].candidate.Value != "alpha" {
-		t.Fatalf("expected selected non-matching item to stay visible, got %#v", model.filtered)
+	if len(model.filtered) != 1 || model.filtered[0].candidate.Value != "gamma" {
+		t.Fatalf("expected non-matching selected item to stay out of results, got %#v", model.filtered)
 	}
 
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -250,11 +253,11 @@ func TestPickerModelDeselectedNonMatchingItemsDisappearFromFilteredList(t *testi
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	model = updated.(pickerModel)
 	if len(model.filtered) != 1 || model.filtered[0].candidate.Value != "gamma" {
-		t.Fatalf("expected deselected non-matching item to disappear from filtered list, got %#v", model.filtered)
+		t.Fatalf("expected filtered results to stay stable after deselection, got %#v", model.filtered)
 	}
 }
 
-func TestPickerModelPinsSelectedItemsWhenPaging(t *testing.T) {
+func TestPickerModelDoesNotReorderSelectedItemsWhenPaging(t *testing.T) {
 	candidates := []wsfold.CompletionCandidate{
 		{Value: "alpha", Name: "alpha"},
 		{Value: "beta", Name: "beta"},
@@ -287,15 +290,12 @@ func TestPickerModelPinsSelectedItemsWhenPaging(t *testing.T) {
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyPgDown})
 	model = updated.(pickerModel)
 
-	if !model.pinSelections {
-		t.Fatalf("expected paging to enable pinned selection view")
-	}
-	if model.filtered[0].candidate.Value != "repo-03" {
-		t.Fatalf("expected selected item to pin to top after paging, got %#v", model.filtered[:6])
+	if model.filtered[0].candidate.Value != "alpha" {
+		t.Fatalf("expected paging to preserve original order, got %#v", model.filtered[:6])
 	}
 }
 
-func TestPickerModelPinsSelectedItemsWhenScrollingPastVisibleWindow(t *testing.T) {
+func TestPickerModelDoesNotReorderSelectedItemsWhenScrollingPastVisibleWindow(t *testing.T) {
 	candidates := make([]wsfold.CompletionCandidate, 0, 30)
 	for i := 0; i < 30; i++ {
 		candidates = append(candidates, wsfold.CompletionCandidate{
@@ -311,22 +311,12 @@ func TestPickerModelPinsSelectedItemsWhenScrollingPastVisibleWindow(t *testing.T
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
 	model = updated.(pickerModel)
 
-	for !model.shouldPinSelectionsOnLinearScroll(1) {
+	for i := 0; i <= pickerVisibleItems; i++ {
 		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 		model = updated.(pickerModel)
-		if model.pinSelections {
-			t.Fatalf("did not expect pinning before scrolling beyond visible window")
-		}
-	}
-
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
-	model = updated.(pickerModel)
-
-	if !model.pinSelections {
-		t.Fatalf("expected pinning after scrolling past visible window")
 	}
 	if model.filtered[0].candidate.Value != "repo-00" {
-		t.Fatalf("expected selected item to pin to top after scrolling, got %#v", model.filtered[:4])
+		t.Fatalf("expected scrolling to preserve original order, got %#v", model.filtered[:4])
 	}
 }
 
@@ -477,6 +467,9 @@ func TestPickerModelUsesMultiSelectHintWhenSelectionsExist(t *testing.T) {
 	}
 	if !strings.Contains(view, "Choose a trusted repository to include in your workspace [Multi mode]") {
 		t.Fatalf("expected multi-select title badge for preselected summon picker, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Selected (1)") {
+		t.Fatalf("expected selected section for preselected summon picker, got:\n%s", view)
 	}
 }
 

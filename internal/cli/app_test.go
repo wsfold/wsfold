@@ -44,6 +44,12 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(output, "Usage:") {
 		t.Fatalf("help output did not contain usage block: %q", output)
 	}
+	if !strings.Contains(output, "If no repository argument is provided, the command opens an interactive picker with flexible search.") {
+		t.Fatalf("help output did not contain interactive picker note: %q", output)
+	}
+	if !strings.Contains(output, "You can refer to a repository by its local folder name or GitHub owner/name.") {
+		t.Fatalf("help output did not contain repo-ref format note: %q", output)
+	}
 	if !strings.Contains(output, "Flags:") || !strings.Contains(output, "-h, --help") || !strings.Contains(output, "-v, --version") {
 		t.Fatalf("help output did not contain flags section: %q", output)
 	}

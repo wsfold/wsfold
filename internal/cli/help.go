@@ -99,6 +99,8 @@ func helpText() string {
 		fmt.Fprintf(&b, "  %s\n", entry.Usage)
 	}
 	b.WriteString("  wsfold --version\n\n")
+	b.WriteString("If no repository argument is provided, the command opens an interactive picker with flexible search.\n\n")
+	b.WriteString("You can refer to a repository by its local folder name or GitHub owner/name.\n\n")
 
 	writeSection(&b, "Commands")
 	for _, entry := range commandHelpEntries {

@@ -124,12 +124,16 @@ func writeDynamicCompletions(cwd string, args []string, stdout io.Writer) error 
 	}
 
 	app := wsfold.NewApp()
-	candidates, err := app.Complete(cwd, args[1], args[2])
+	command := args[1]
+	candidates, err := app.Complete(cwd, command, args[2])
 	if err != nil {
 		return err
 	}
 
 	for _, candidate := range candidates {
+		if (command == "summon" || command == "summon-external") && candidate.Attached {
+			continue
+		}
 		line := candidate.Value
 		if strings.TrimSpace(candidate.Description) != "" {
 			line += "\t" + candidate.Description

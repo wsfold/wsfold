@@ -227,6 +227,50 @@ func TestRunCompletionWithoutArgsPrintsSetupHelp(t *testing.T) {
 	}
 }
 
+func TestRunDynamicCompletionSkipsAlreadyAttachedReposForSummonCommands(t *testing.T) {
+	h := testutil.NewHarness(t)
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+
+	trustedRepo := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(trustedRepo)
+	h.RunGit(trustedRepo, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	externalRepo := filepath.Join(h.ExternalRoot, "legacy-tool")
+	h.InitRepo(externalRepo)
+	h.RunGit(externalRepo, "remote", "add", "origin", "https://github.com/github/legacy-tool.git")
+
+	app := wsfold.NewApp()
+	if err := app.Init(h.Workspace); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+	if err := app.SummonUntrusted(h.Workspace, "legacy-tool"); err != nil {
+		t.Fatalf("SummonUntrusted returned error: %v", err)
+	}
+
+	var summonStdout bytes.Buffer
+	if err := writeDynamicCompletions(h.Workspace, []string{"__complete", "summon", "se"}, &summonStdout); err != nil {
+		t.Fatalf("writeDynamicCompletions summon returned error: %v", err)
+	}
+	if strings.Contains(summonStdout.String(), "service") {
+		t.Fatalf("did not expect attached summon repo in completion output, got %q", summonStdout.String())
+	}
+
+	var externalStdout bytes.Buffer
+	if err := writeDynamicCompletions(h.Workspace, []string{"__complete", "summon-external", "leg"}, &externalStdout); err != nil {
+		t.Fatalf("writeDynamicCompletions summon-external returned error: %v", err)
+	}
+	if strings.Contains(externalStdout.String(), "legacy-tool") {
+		t.Fatalf("did not expect attached summon-external repo in completion output, got %q", externalStdout.String())
+	}
+}
+
 func TestRunSummonWithoutRepoRefUsesPicker(t *testing.T) {
 	original := runPicker
 	t.Cleanup(func() { runPicker = original })

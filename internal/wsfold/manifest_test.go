@@ -19,7 +19,7 @@ func TestManifestRoundTripMatchesGolden(t *testing.T) {
 				RepoRef:      "acme/service",
 				CheckoutPath: "/trusted/acme/service",
 				TrustClass:   TrustClassTrusted,
-				MountPath:    filepath.Join(root, "_prj", "service"),
+				MountPath:    filepath.Join(root, "service"),
 			},
 		},
 		External: []Entry{

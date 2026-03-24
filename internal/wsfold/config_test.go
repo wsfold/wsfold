@@ -105,7 +105,7 @@ func TestLoadProjectsDirNameDefaultsAndOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadConfig returned error: %v", err)
 	}
-	if cfg.ProjectsDirName != "_prj" {
+	if cfg.ProjectsDirName != "." {
 		t.Fatalf("expected default projects dir, got %q", cfg.ProjectsDirName)
 	}
 
@@ -128,5 +128,24 @@ func TestLoadProjectsDirNameDefaultsAndOverrides(t *testing.T) {
 	}
 	if cfg.ProjectsDirName != "_ctx" {
 		t.Fatalf("expected overridden projects dir, got %q", cfg.ProjectsDirName)
+	}
+
+	cfg, err = loadConfig(func(key string) (string, bool) {
+		switch key {
+		case envTrustedDir:
+			return "/tmp/trusted", true
+		case envExternalDir:
+			return "/tmp/external", true
+		case envProjectsDir:
+			return ".", true
+		default:
+			return "", false
+		}
+	})
+	if err != nil {
+		t.Fatalf("loadConfig returned error: %v", err)
+	}
+	if cfg.ProjectsDirName != "." {
+		t.Fatalf("expected explicit root-mount projects dir, got %q", cfg.ProjectsDirName)
 	}
 }

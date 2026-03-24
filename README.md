@@ -54,13 +54,13 @@ Before using `wsfold`, add the following variables to your shell profile and rep
 export WSFOLD_TRUSTED_DIR="$HOME/repo/_prj"
 export WSFOLD_EXTERNAL_DIR="$HOME/repo/_ext"
 export WSFOLD_TRUSTED_GITHUB_ORGS="org_name,org_name2"
-export WSFOLD_PROJECTS_DIR="_prj"
+export WSFOLD_PROJECTS_DIR="."
 ```
 
 `WSFOLD_TRUSTED_DIR` is required. It should point to an existing local directory that contains repositories you are comfortable treating as trusted, including opening them in your editor and running LLM agents against them.
 `WSFOLD_EXTERNAL_DIR` is required. It should point to an existing local directory that contains repositories you may want visible in the workspace, but do not want to treat as trusted or link directly into the trusted workspace tree.
 `WSFOLD_TRUSTED_GITHUB_ORGS` is an optional comma-separated list of GitHub organization names. It is strongly recommended if your work involves repositories from one or more GitHub organizations you trust.
-`WSFOLD_PROJECTS_DIR` is optional. It controls the name of the parent directory used for trusted repository mounts inside the workspace. The default is `_prj`.
+`WSFOLD_PROJECTS_DIR` is optional. It controls where trusted repositories are mounted inside the workspace. The default is `.` which means "mount directly into the workspace root". Any other non-empty value is treated as the name of the parent directory used for trusted mounts inside the workspace.
 
 To use trusted remote discovery and on-demand cloning, install the GitHub CLI and authenticate with it:
 
@@ -125,7 +125,7 @@ Commands:
 
 `wsfold` maintains a `.code-workspace` file alongside the workspace root. `wsfold init` creates this file even before any repositories are attached, so the workspace can be opened in Visual Studio Code and compatible editors such as Cursor and Windsurf from the start as a multi-root project.
 
-Trusted repositories attached with `wsfold summon` are added to that `.code-workspace` file as additional roots. To avoid showing the same repository twice, `wsfold` excludes the trusted mount directory controlled by `WSFOLD_PROJECTS_DIR` from the main workspace tree, while keeping it available on disk at its real filesystem path.
+Trusted repositories attached with `wsfold summon` are added to that `.code-workspace` file as additional roots. To avoid showing the same repository twice, `wsfold` excludes the trusted mount location from the main workspace tree while keeping it available on disk at its real filesystem path.
 
 External repositories attached with `wsfold summon-external` are handled differently. They are added to the `.code-workspace` file as workspace roots, but are not symlinked into the trusted workspace tree.
 

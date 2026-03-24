@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 type workspaceFile struct {
@@ -59,18 +60,8 @@ func renderWorkspace(manifest Manifest, projectsDirName string) ([]byte, error) 
 	}
 
 	file := workspaceFile{
-		Folders: folders,
-		Settings: map[string]any{
-			"files.exclude": map[string]bool{
-				projectsDirName: true,
-			},
-			"files.watcherExclude": map[string]bool{
-				projectsDirName: true,
-			},
-			"search.exclude": map[string]bool{
-				projectsDirName: true,
-			},
-		},
+		Folders:  folders,
+		Settings: workspaceSettings(manifest, projectsDirName),
 	}
 
 	data, err := json.MarshalIndent(file, "", "  ")
@@ -78,6 +69,47 @@ func renderWorkspace(manifest Manifest, projectsDirName string) ([]byte, error) 
 		return nil, fmt.Errorf("marshal workspace: %w", err)
 	}
 	return append(data, '\n'), nil
+}
+
+func trustedMountPath(primaryRoot string, projectsDirName string, repoName string) string {
+	if projectsDirName == "." {
+		return filepath.Join(primaryRoot, repoName)
+	}
+	return filepath.Join(primaryRoot, projectsDirName, repoName)
+}
+
+func workspaceSettings(manifest Manifest, projectsDirName string) map[string]any {
+	excludes := workspaceExcludes(manifest, projectsDirName)
+	return map[string]any{
+		"files.exclude":        excludes,
+		"files.watcherExclude": excludes,
+		"search.exclude":       excludes,
+	}
+}
+
+func workspaceExcludes(manifest Manifest, projectsDirName string) map[string]bool {
+	excludes := map[string]bool{}
+	if projectsDirName == "." {
+		names := map[string]struct{}{}
+		for _, entry := range manifest.Trusted {
+			if entry.MountPath == "" {
+				continue
+			}
+			names[filepath.Base(entry.MountPath)] = struct{}{}
+		}
+		keys := make([]string, 0, len(names))
+		for name := range names {
+			keys = append(keys, name)
+		}
+		sort.Strings(keys)
+		for _, name := range keys {
+			excludes[name] = true
+		}
+		return excludes
+	}
+
+	excludes[projectsDirName] = true
+	return excludes
 }
 
 func workspaceRelativePath(primaryRoot string, targetPath string) (string, error) {

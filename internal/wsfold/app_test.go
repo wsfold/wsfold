@@ -30,11 +30,11 @@ func TestSummonExistingTrustedRepo(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Trusted repository attached:") {
 		t.Fatalf("expected richer trusted summon success message, got:\n%s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "acme/service") || !strings.Contains(stdout.String(), "_prj/service") {
+	if !strings.Contains(stdout.String(), "acme/service") || !strings.Contains(stdout.String(), "service") {
 		t.Fatalf("expected richer trusted summon success message, got:\n%s", stdout.String())
 	}
 
-	link := filepath.Join(h.Workspace, "_prj", "service")
+	link := filepath.Join(h.Workspace, "service")
 	target, err := os.Readlink(link)
 	if err != nil {
 		t.Fatalf("read symlink: %v", err)
@@ -55,7 +55,7 @@ func TestSummonExistingTrustedRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read workspace file: %v", err)
 	}
-	if !strings.Contains(string(workspaceBytes), `"_prj/service"`) {
+	if !strings.Contains(string(workspaceBytes), `"service"`) {
 		t.Fatalf("workspace did not include trusted symlink root:\n%s", string(workspaceBytes))
 	}
 	if strings.Contains(string(workspaceBytes), repoPath) {
@@ -164,7 +164,7 @@ func TestSummonSupportsLocalFolderAlias(t *testing.T) {
 		t.Fatalf("Summon returned error for local folder alias: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "_prj", "math")
+	link := filepath.Join(h.Workspace, "math")
 	target, err := os.Readlink(link)
 	if err != nil {
 		t.Fatalf("read symlink: %v", err)
@@ -191,8 +191,8 @@ func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 			t.Fatalf("SummonUntrusted returned error: %v", err)
 		}
 
-		if _, err := os.Lstat(filepath.Join(h.Workspace, "_prj", "legacy-tool")); !os.IsNotExist(err) {
-			t.Fatalf("expected no symlink under _prj, got %v", err)
+		if _, err := os.Lstat(filepath.Join(h.Workspace, "legacy-tool")); !os.IsNotExist(err) {
+			t.Fatalf("expected no symlink in workspace root, got %v", err)
 		}
 	})
 
@@ -245,7 +245,7 @@ func TestDismissTrustedAndExternalLifecycle(t *testing.T) {
 	}
 
 	trustedClone := filepath.Join(h.TrustedRoot, "service")
-	trustedLink := filepath.Join(h.Workspace, "_prj", "service")
+	trustedLink := filepath.Join(h.Workspace, "service")
 
 	if err := app.Dismiss(h.Workspace, "service"); err != nil {
 		t.Fatalf("Dismiss trusted returned error: %v", err)
@@ -391,7 +391,7 @@ func TestDismissSupportsLocalFolderAlias(t *testing.T) {
 		t.Fatalf("Summon returned error for local folder alias: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "_prj", "math")
+	link := filepath.Join(h.Workspace, "math")
 	if _, err := os.Lstat(link); err != nil {
 		t.Fatalf("expected trusted symlink before dismiss: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestDismissAfterManualSymlinkRemoval(t *testing.T) {
 		t.Fatalf("Summon returned error: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "_prj", "service")
+	link := filepath.Join(h.Workspace, "service")
 	if err := os.Remove(link); err != nil {
 		t.Fatalf("remove link: %v", err)
 	}
@@ -450,7 +450,7 @@ func TestSummonReplacesStaleMountResidueDirectory(t *testing.T) {
 	h.InitRepo(repoPath)
 	h.RunGit(repoPath, "remote", "add", "origin", "https://github.com/acme/service.git")
 
-	staleMount := filepath.Join(h.Workspace, "_prj", "service", ".git", "gk")
+	staleMount := filepath.Join(h.Workspace, "service", ".git", "gk")
 	if err := os.MkdirAll(staleMount, 0o755); err != nil {
 		t.Fatalf("mkdir stale mount residue: %v", err)
 	}
@@ -465,7 +465,7 @@ func TestSummonReplacesStaleMountResidueDirectory(t *testing.T) {
 		t.Fatalf("Summon returned error with stale residue: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "_prj", "service")
+	link := filepath.Join(h.Workspace, "service")
 	target, err := os.Readlink(link)
 	if err != nil {
 		t.Fatalf("expected stale residue to be replaced with symlink: %v", err)
@@ -493,7 +493,7 @@ func TestDismissRemovesStaleMountResidueDirectory(t *testing.T) {
 		t.Fatalf("Summon returned error: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "_prj", "service")
+	link := filepath.Join(h.Workspace, "service")
 	if err := os.Remove(link); err != nil {
 		t.Fatalf("remove symlink: %v", err)
 	}
@@ -548,7 +548,7 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 	if _, err := os.Stat(externalClone); err != nil {
 		t.Fatalf("external clone missing after smoke flow: %v", err)
 	}
-	if _, err := os.Lstat(filepath.Join(h.Workspace, "_prj", "service")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(filepath.Join(h.Workspace, "service")); !os.IsNotExist(err) {
 		t.Fatalf("trusted symlink should be gone after dismiss, got %v", err)
 	}
 
@@ -559,8 +559,8 @@ func TestEndToEndSmokeScenario(t *testing.T) {
 	if !strings.Contains(string(workspaceBytes), `"name": "`+filepath.Base(h.Workspace)+`"`) {
 		t.Fatalf("workspace should keep the primary root folder by workspace basename:\n%s", string(workspaceBytes))
 	}
-	if !strings.Contains(string(workspaceBytes), `"files.exclude":`) || !strings.Contains(string(workspaceBytes), `"_prj": true`) {
-		t.Fatalf("workspace should exclude _prj from explorer/search/watcher:\n%s", string(workspaceBytes))
+	if !strings.Contains(string(workspaceBytes), `"files.exclude":`) || strings.Contains(string(workspaceBytes), `"service": true`) {
+		t.Fatalf("workspace should drop trusted repo excludes after dismiss:\n%s", string(workspaceBytes))
 	}
 
 	manifest, err := loadManifest(h.Workspace)
@@ -644,5 +644,48 @@ func setEnv(t *testing.T, h *testutil.Harness) {
 		key, value, _ := strings.Cut(env, "=")
 		t.Setenv(key, value)
 	}
-	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+	t.Setenv("WSFOLD_PROJECTS_DIR", ".")
+}
+
+func setEnvWithProjectsDir(t *testing.T, h *testutil.Harness, projectsDir string) {
+	t.Helper()
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", projectsDir)
+}
+
+func TestSummonCustomProjectsDirStillMountsUnderSubdir(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnvWithProjectsDir(t, h, "_ctx")
+	initWorkspace(t, h)
+
+	repoPath := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(repoPath)
+	h.RunGit(repoPath, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+
+	link := filepath.Join(h.Workspace, "_ctx", "service")
+	target, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("read symlink: %v", err)
+	}
+	if target != repoPath {
+		t.Fatalf("unexpected symlink target: %s", target)
+	}
+
+	workspaceBytes, err := os.ReadFile(workspacePath(h.Workspace))
+	if err != nil {
+		t.Fatalf("read workspace file: %v", err)
+	}
+	if !strings.Contains(string(workspaceBytes), `"_ctx/service"`) || !strings.Contains(string(workspaceBytes), `"_ctx": true`) {
+		t.Fatalf("workspace should keep custom projects dir behavior:\n%s", string(workspaceBytes))
+	}
 }

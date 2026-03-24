@@ -257,5 +257,5 @@ func setCompletionEnv(t *testing.T, h *testutil.Harness) {
 		key, value, _ := strings.Cut(env, "=")
 		t.Setenv(key, value)
 	}
-	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+	t.Setenv("WSFOLD_PROJECTS_DIR", ".")
 }

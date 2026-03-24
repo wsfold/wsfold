@@ -6,7 +6,7 @@
     },
     {
       "name": "service",
-      "path": "_prj/service"
+      "path": "service"
     },
     {
       "name": "tool",
@@ -15,13 +15,13 @@
   ],
   "settings": {
     "files.exclude": {
-      "_prj": true
+      "service": true
     },
     "files.watcherExclude": {
-      "_prj": true
+      "service": true
     },
     "search.exclude": {
-      "_prj": true
+      "service": true
     }
   }
 }

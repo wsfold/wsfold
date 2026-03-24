@@ -19,7 +19,7 @@ func TestRenderWorkspaceMatchesGoldenAndIsDeterministic(t *testing.T) {
 				RepoRef:      "acme/service",
 				CheckoutPath: "/trusted/acme/service",
 				TrustClass:   TrustClassTrusted,
-				MountPath:    filepath.Join(root, "_prj", "service"),
+				MountPath:    filepath.Join(root, "service"),
 			},
 		},
 		External: []Entry{
@@ -31,11 +31,11 @@ func TestRenderWorkspaceMatchesGoldenAndIsDeterministic(t *testing.T) {
 		},
 	}
 
-	first, err := renderWorkspace(manifest, "_prj")
+	first, err := renderWorkspace(manifest, ".")
 	if err != nil {
 		t.Fatalf("renderWorkspace returned error: %v", err)
 	}
-	second, err := renderWorkspace(manifest, "_prj")
+	second, err := renderWorkspace(manifest, ".")
 	if err != nil {
 		t.Fatalf("renderWorkspace returned error: %v", err)
 	}
@@ -56,5 +56,34 @@ func TestRenderWorkspaceMatchesGoldenAndIsDeterministic(t *testing.T) {
 	expected = strings.ReplaceAll(expected, "{{EXTERNAL_RELATIVE_PATH}}", filepath.ToSlash(externalRelativePath))
 	if string(first) != expected {
 		t.Fatalf("workspace mismatch\nwant:\n%s\ngot:\n%s", expected, string(first))
+	}
+}
+
+func TestRenderWorkspaceCustomProjectsDirKeepsSubdirExcludes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	manifest := Manifest{
+		Version:     manifestVersion,
+		PrimaryRoot: root,
+		Trusted: []Entry{
+			{
+				RepoRef:      "acme/service",
+				CheckoutPath: "/trusted/acme/service",
+				TrustClass:   TrustClassTrusted,
+				MountPath:    filepath.Join(root, "_ctx", "service"),
+			},
+		},
+	}
+
+	data, err := renderWorkspace(manifest, "_ctx")
+	if err != nil {
+		t.Fatalf("renderWorkspace returned error: %v", err)
+	}
+	if !strings.Contains(string(data), `"_ctx/service"`) {
+		t.Fatalf("expected trusted root under custom projects dir:\n%s", string(data))
+	}
+	if !strings.Contains(string(data), `"_ctx": true`) {
+		t.Fatalf("expected custom projects dir exclude:\n%s", string(data))
 	}
 }

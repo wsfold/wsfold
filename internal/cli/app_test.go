@@ -53,7 +53,7 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(output, "Flags:") || !strings.Contains(output, "-h, --help") || !strings.Contains(output, "-v, --version") {
 		t.Fatalf("help output did not contain flags section: %q", output)
 	}
-	if !strings.Contains(output, "Environment:") || !strings.Contains(output, "WSFOLD_PROJECTS_DIR") || !strings.Contains(output, "default: _prj") {
+	if !strings.Contains(output, "Environment:") || !strings.Contains(output, "WSFOLD_PROJECTS_DIR") || !strings.Contains(output, "default: .") {
 		t.Fatalf("help output did not contain environment section: %q", output)
 	}
 	if !strings.Contains(output, "Examples:") || !strings.Contains(output, `eval "$(wsfold completion zsh)"`) {
@@ -239,7 +239,7 @@ func TestRunDynamicCompletionSkipsAlreadyAttachedReposForSummonCommands(t *testi
 		key, value, _ := strings.Cut(env, "=")
 		t.Setenv(key, value)
 	}
-	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+	t.Setenv("WSFOLD_PROJECTS_DIR", ".")
 
 	trustedRepo := filepath.Join(h.TrustedRoot, "service")
 	h.InitRepo(trustedRepo)
@@ -322,7 +322,7 @@ func TestResolveCommandRefsDismissWithoutCandidatesIsNoop(t *testing.T) {
 		key, value, _ := strings.Cut(env, "=")
 		t.Setenv(key, value)
 	}
-	t.Setenv("WSFOLD_PROJECTS_DIR", "_prj")
+	t.Setenv("WSFOLD_PROJECTS_DIR", ".")
 
 	app := wsfold.NewApp()
 	if err := app.Init(h.Workspace); err != nil {

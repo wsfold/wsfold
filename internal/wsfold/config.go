@@ -69,7 +69,7 @@ func loadConfig(lookupEnv func(string) (string, bool)) (Config, error) {
 func loadProjectsDirName(lookupEnv func(string) (string, bool)) string {
 	raw, ok := lookupEnv(envProjectsDir)
 	if !ok || strings.TrimSpace(raw) == "" {
-		return "_prj"
+		return "."
 	}
 
 	return strings.TrimSpace(raw)

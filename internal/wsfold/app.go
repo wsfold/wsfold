@@ -121,7 +121,7 @@ func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 	}
 
 	if requested == TrustClassTrusted {
-		entry.MountPath = filepath.Join(primaryRoot, cfg.ProjectsDirName, repo.Name)
+		entry.MountPath = trustedMountPath(primaryRoot, cfg.ProjectsDirName, repo.Name)
 		if err := ensureTrustedSymlink(entry.MountPath, repo.CheckoutPath); err != nil {
 			return err
 		}

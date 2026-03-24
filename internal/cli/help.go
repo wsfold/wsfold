@@ -74,8 +74,8 @@ var envHelpEntries = []envHelpEntry{
 	{
 		Name:        "WSFOLD_PROJECTS_DIR",
 		Required:    false,
-		Default:     "_prj",
-		Description: "workspace mount directory name",
+		Default:     ".",
+		Description: "trusted mount directory name; use . for the workspace root",
 	},
 }
 

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/openclaw/wsfold/internal/testutil"
 )
 
 func TestManifestRoundTripMatchesGolden(t *testing.T) {
@@ -69,7 +71,7 @@ func TestResolveManifestEntryReturnsAmbiguityErrorWithFullRepoGuidance(t *testin
 		},
 	}
 
-	_, ok, err := resolveManifestEntry(manifest, "service")
+	_, ok, err := resolveManifestEntry(manifest, "service", Runner{})
 	if ok {
 		t.Fatal("did not expect ambiguous short ref to resolve")
 	}
@@ -91,7 +93,7 @@ func TestResolveManifestEntryAcceptsFullRepoNameWhenShortNameIsAmbiguous(t *test
 		},
 	}
 
-	entry, ok, err := resolveManifestEntry(manifest, "other/service")
+	entry, ok, err := resolveManifestEntry(manifest, "other/service", Runner{})
 	if err != nil {
 		t.Fatalf("resolveManifestEntry returned error: %v", err)
 	}
@@ -99,6 +101,34 @@ func TestResolveManifestEntryAcceptsFullRepoNameWhenShortNameIsAmbiguous(t *test
 		t.Fatal("expected exact repo ref to resolve")
 	}
 	if entry.RepoRef != "other/service" || entry.TrustClass != TrustClassExternal {
+		t.Fatalf("unexpected resolved entry: %#v", entry)
+	}
+}
+
+func TestResolveManifestEntryAcceptsWorktreeBranchRef(t *testing.T) {
+	h := testutil.NewHarness(t)
+	base := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(base)
+	h.RunGit(base, "remote", "add", "origin", "https://github.com/acme/service.git")
+	h.RunGit(base, "branch", "feature/worktree")
+
+	worktreePath := filepath.Join(h.TrustedRoot, "service-feature")
+	h.RunGit(base, "worktree", "add", worktreePath, "feature/worktree")
+
+	manifest := Manifest{
+		Trusted: []Entry{
+			{RepoRef: "acme/service/feature/worktree", CheckoutPath: worktreePath, TrustClass: TrustClassTrusted},
+		},
+	}
+
+	entry, ok, err := resolveManifestEntry(manifest, "acme/service/feature/worktree", Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}})
+	if err != nil {
+		t.Fatalf("resolveManifestEntry returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected worktree branch ref to resolve")
+	}
+	if entry.CheckoutPath != worktreePath {
 		t.Fatalf("unexpected resolved entry: %#v", entry)
 	}
 }

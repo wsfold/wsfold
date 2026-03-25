@@ -100,7 +100,7 @@ func helpText() string {
 	}
 	b.WriteString("  wsfold --version\n\n")
 	b.WriteString("If no repository argument is provided, the command opens an interactive picker with flexible search.\n\n")
-	b.WriteString("You can refer to a repository by its local folder name or GitHub owner/name.\n\n")
+	b.WriteString("You can refer to a repository by its local folder name, GitHub owner/name, or owner/name/branch for a local worktree.\n\n")
 
 	writeSection(&b, "Commands")
 	for _, entry := range commandHelpEntries {
@@ -131,6 +131,7 @@ func helpText() string {
 	b.WriteString("  wsfold summon\n")
 	b.WriteString("  wsfold summon billing-service\n")
 	b.WriteString("  wsfold summon org_name/billing-service\n")
+	b.WriteString("  wsfold summon org_name/billing-service/branch-name\n")
 	b.WriteString("  wsfold summon-external legacy-tool\n")
 	b.WriteString("  wsfold dismiss\n")
 	b.WriteString("  wsfold init\n")

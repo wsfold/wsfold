@@ -16,6 +16,8 @@ type CompletionCandidate struct {
 	TrustClass  TrustClass
 	Name        string
 	Slug        string
+	Branch      string
+	IsWorktree  bool
 	Source      CompletionSource
 }
 
@@ -152,10 +154,18 @@ func (a *App) completeManifest(cwd string, prefix string) ([]CompletionCandidate
 	}
 
 	all := append(append([]Entry{}, manifest.Trusted...), manifest.External...)
-	valueByPath := preferredManifestValues(all)
+	repos := make([]Repo, 0, len(all))
+	entryByPath := map[string]Entry{}
+	for _, entry := range all {
+		repo := hydrateManifestRepo(entry, a.Runner)
+		repos = append(repos, repo)
+		entryByPath[entry.CheckoutPath] = entry
+	}
+	valueByPath := preferredManifestValues(all, repos)
 	candidates := make([]CompletionCandidate, 0, len(all))
 	seen := map[string]struct{}{}
-	for _, entry := range all {
+	for _, repo := range repos {
+		entry := entryByPath[repo.CheckoutPath]
 		value := valueByPath[entry.CheckoutPath]
 		key := entry.Key()
 		if prefix != "" && !strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
@@ -166,7 +176,7 @@ func (a *App) completeManifest(cwd string, prefix string) ([]CompletionCandidate
 		}
 		seen[key] = struct{}{}
 
-		description := completionDescription(entry.RepoRef, entry.CheckoutPath)
+		description := completionDescription(repo.DisplayRef(), entry.CheckoutPath)
 		candidates = append(candidates, CompletionCandidate{
 			Key:         key,
 			Value:       value,
@@ -174,6 +184,9 @@ func (a *App) completeManifest(cwd string, prefix string) ([]CompletionCandidate
 			Attached:    true,
 			TrustClass:  entry.TrustClass,
 			Name:        completionFolderName(entry.CheckoutPath),
+			Slug:        repo.Slug,
+			Branch:      repo.Branch,
+			IsWorktree:  repo.IsWorktree,
 			Source:      CompletionSourceLocal,
 		})
 	}
@@ -215,6 +228,8 @@ func completionCandidatesFromRepos(repos []Repo, attached map[string]bool, prefi
 			TrustClass:  repo.TrustClass,
 			Name:        completionFolderName(repo.CheckoutPath),
 			Slug:        repo.Slug,
+			Branch:      repo.Branch,
+			IsWorktree:  repo.IsWorktree,
 			Source:      CompletionSourceLocal,
 		})
 	}
@@ -297,6 +312,10 @@ func preferredCompletionValues(repos []Repo) map[string]string {
 
 	values := map[string]string{}
 	for _, repo := range repos {
+		if repo.IsWorktree && repo.Slug != "" && strings.TrimSpace(repo.Branch) != "" {
+			values[repo.CheckoutPath] = repo.DisplayRef()
+			continue
+		}
 		name := completionFolderName(repo.CheckoutPath)
 		if counts[name] == 1 {
 			values[repo.CheckoutPath] = name
@@ -307,14 +326,23 @@ func preferredCompletionValues(repos []Repo) map[string]string {
 	return values
 }
 
-func preferredManifestValues(entries []Entry) map[string]string {
+func preferredManifestValues(entries []Entry, repos []Repo) map[string]string {
 	counts := map[string]int{}
 	for _, entry := range entries {
 		counts[completionFolderName(entry.CheckoutPath)]++
 	}
+	repoByPath := map[string]Repo{}
+	for _, repo := range repos {
+		repoByPath[repo.CheckoutPath] = repo
+	}
 
 	values := map[string]string{}
 	for _, entry := range entries {
+		repo, ok := repoByPath[entry.CheckoutPath]
+		if ok && repo.IsWorktree && repo.Slug != "" && strings.TrimSpace(repo.Branch) != "" {
+			values[entry.CheckoutPath] = repo.DisplayRef()
+			continue
+		}
 		name := completionFolderName(entry.CheckoutPath)
 		if counts[name] == 1 {
 			values[entry.CheckoutPath] = name
@@ -364,11 +392,7 @@ func attachedCheckoutPaths(cwd string) map[string]bool {
 }
 
 func repoCompletionKey(repo Repo) string {
-	identity := strings.TrimSpace(repo.Slug)
-	if identity == "" {
-		identity = strings.TrimSpace(repo.CheckoutPath)
-	}
-	return fmt.Sprintf("%s|%s", repo.TrustClass, strings.ToLower(identity))
+	return fmt.Sprintf("%s|%s", repo.TrustClass, strings.ToLower(strings.TrimSpace(repo.CheckoutPath)))
 }
 
 func trustedRemoteCandidateKey(repo TrustedRemoteRepo) string {

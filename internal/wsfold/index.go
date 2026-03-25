@@ -110,6 +110,8 @@ func buildRepoWithoutOrigin(path string, trustClass TrustClass) Repo {
 }
 
 func hydrateRepo(repo Repo, runner Runner) Repo {
+	repo.Branch = repoBranch(runner, repo.CheckoutPath)
+	repo.IsWorktree = repoIsWorktree(repo.CheckoutPath)
 	repo.OriginURL = repoOrigin(runner, repo.CheckoutPath)
 	if owner, name, ok := parseGitHubSlug(repo.OriginURL); ok {
 		repo.Slug = owner + "/" + name
@@ -121,12 +123,20 @@ func hydrateRepo(repo Repo, runner Runner) Repo {
 func (idx RepoIndex) Resolve(ref string, requested TrustClass) (Repo, error) {
 	ref = normalizeRepoRef(ref)
 
-	if repo, ok := idx.resolveExactSlug(ref, requested); ok {
-		return repo, nil
+	if repo, resolved, err := idx.resolveExactRef(ref, requested); resolved {
+		return repo, err
+	}
+
+	candidates := idx.byLocalName(ref, requested)
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+	if len(candidates) > 1 {
+		return Repo{}, ambiguityError(ref, candidates)
 	}
 
 	shortName := repoNameFromRef(ref)
-	candidates := idx.byShortName(shortName, requested)
+	candidates = idx.byPrimaryShortName(shortName, requested)
 	if len(candidates) == 1 {
 		return candidates[0], nil
 	}
@@ -137,7 +147,28 @@ func (idx RepoIndex) Resolve(ref string, requested TrustClass) (Repo, error) {
 	return Repo{}, os.ErrNotExist
 }
 
-func (idx RepoIndex) resolveExactSlug(ref string, requested TrustClass) (Repo, bool) {
+func (idx RepoIndex) resolveExactRef(ref string, requested TrustClass) (Repo, bool, error) {
+	if owner, name, branch, ok := splitSlugWithBranch(ref); ok {
+		slug := owner + "/" + name
+		matches := idx.byWorktreeSlugAndBranch(slug, branch, requested)
+		if len(matches) == 1 {
+			return matches[0], true, nil
+		}
+		if len(matches) > 1 {
+			return Repo{}, true, ambiguityError(ref, matches)
+		}
+		return Repo{}, false, nil
+	}
+
+	if owner, name, ok := splitSlug(ref); ok {
+		repo, resolved, err := idx.resolvePrimarySlug(owner+"/"+name, requested)
+		return repo, resolved, err
+	}
+
+	return Repo{}, false, nil
+}
+
+func (idx RepoIndex) resolvePrimarySlug(ref string, requested TrustClass) (Repo, bool, error) {
 	slugMatches := make([]Repo, 0)
 	for _, repo := range idx.Repos {
 		if repo.Slug == strings.ToLower(ref) {
@@ -146,26 +177,30 @@ func (idx RepoIndex) resolveExactSlug(ref string, requested TrustClass) (Repo, b
 	}
 
 	if len(slugMatches) == 0 {
-		return Repo{}, false
+		return Repo{}, false, nil
 	}
 
-	filtered := filterByTrust(slugMatches, requested)
-	if len(filtered) == 1 {
-		return filtered[0], true
+	preferred := filterByTrust(slugMatches, requested)
+	if len(preferred) == 0 {
+		preferred = slugMatches
 	}
 
-	if len(filtered) == 0 && len(slugMatches) == 1 {
-		return slugMatches[0], true
+	primary := primaryRepos(preferred)
+	if len(primary) == 1 {
+		return primary[0], true, nil
+	}
+	if len(primary) > 1 {
+		return Repo{}, true, ambiguityError(ref, primary)
 	}
 
-	return Repo{}, false
+	return Repo{}, true, fmt.Errorf("repo ref %q matches only worktree checkouts; use owner/repo/branch or the local folder name", ref)
 }
 
-func (idx RepoIndex) byShortName(name string, requested TrustClass) []Repo {
+func (idx RepoIndex) byLocalName(name string, requested TrustClass) []Repo {
 	matches := make([]Repo, 0)
+	normalized := strings.ToLower(strings.TrimSpace(name))
 	for _, repo := range idx.Repos {
-		normalized := strings.ToLower(name)
-		if repo.Name == normalized || repo.LocalName == normalized {
+		if repo.LocalName == normalized {
 			matches = append(matches, repo)
 		}
 	}
@@ -175,6 +210,53 @@ func (idx RepoIndex) byShortName(name string, requested TrustClass) []Repo {
 		return preferred
 	}
 	return matches
+}
+
+func (idx RepoIndex) byPrimaryShortName(name string, requested TrustClass) []Repo {
+	matches := make([]Repo, 0)
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	for _, repo := range idx.Repos {
+		if repo.IsWorktree {
+			continue
+		}
+		if repo.Name == normalized {
+			matches = append(matches, repo)
+		}
+	}
+
+	preferred := filterByTrust(matches, requested)
+	if len(preferred) > 0 {
+		return preferred
+	}
+	return matches
+}
+
+func (idx RepoIndex) byWorktreeSlugAndBranch(slug string, branch string, requested TrustClass) []Repo {
+	matches := make([]Repo, 0)
+	for _, repo := range idx.Repos {
+		if !repo.IsWorktree || repo.Slug != strings.ToLower(strings.TrimSpace(slug)) {
+			continue
+		}
+		if repo.Branch == strings.TrimSpace(branch) {
+			matches = append(matches, repo)
+		}
+	}
+
+	preferred := filterByTrust(matches, requested)
+	if len(preferred) > 0 {
+		return preferred
+	}
+	return matches
+}
+
+func primaryRepos(repos []Repo) []Repo {
+	primary := make([]Repo, 0, len(repos))
+	for _, repo := range repos {
+		if !repo.IsWorktree {
+			primary = append(primary, repo)
+		}
+	}
+	return primary
 }
 
 func filterByTrust(repos []Repo, requested TrustClass) []Repo {
@@ -310,7 +392,19 @@ func trustedClonePathAvailable(path string, owner string, name string, runner Ru
 }
 
 func resolveExistingRepo(cfg Config, runner Runner, ref string, requested TrustClass) (Repo, error) {
-	if owner, name, ok := parseGitHubSlug(ref); ok {
+	if _, _, _, ok := splitSlugWithBranch(ref); ok {
+		directRepos, err := discoverDirectRepos(cfg, requested)
+		if err != nil {
+			return Repo{}, err
+		}
+		hydrated := make([]Repo, 0, len(directRepos))
+		for _, repo := range directRepos {
+			hydrated = append(hydrated, hydrateRepo(repo, runner))
+		}
+		return RepoIndex{Repos: hydrated}.Resolve(ref, requested)
+	}
+
+	if owner, name, ok := splitSlug(ref); ok {
 		candidates, err := discoverReposBySlug(cfg, runner, owner+"/"+name)
 		if err != nil {
 			return Repo{}, err
@@ -319,18 +413,7 @@ func resolveExistingRepo(cfg Config, runner Runner, ref string, requested TrustC
 			return Repo{}, os.ErrNotExist
 		}
 
-		filtered := filterByTrust(candidates, requested)
-		if len(filtered) == 1 {
-			return filtered[0], nil
-		}
-		if len(filtered) > 1 {
-			return Repo{}, ambiguityError(ref, filtered)
-		}
-		if len(candidates) == 1 {
-			return candidates[0], nil
-		}
-
-		return Repo{}, ambiguityError(ref, candidates)
+		return RepoIndex{Repos: candidates}.Resolve(ref, requested)
 	}
 
 	directRepos, err := discoverDirectRepos(cfg, requested)
@@ -393,7 +476,7 @@ func discoverReposBySlug(cfg Config, runner Runner, slug string) ([]Repo, error)
 	slug = strings.ToLower(strings.TrimSpace(slug))
 	candidates := make([]Repo, 0)
 
-	repos, err := discoverDirectReposUnderRoot(cfg.TrustedDir, TrustClassTrusted)
+	repos, err := discoverDirectRepos(cfg, TrustClassTrusted)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +492,16 @@ func discoverReposBySlug(cfg Config, runner Runner, slug string) ([]Repo, error)
 		if isGitRepo(externalPath) {
 			hydrated := hydrateRepo(buildRepoWithoutOrigin(externalPath, TrustClassExternal), runner)
 			if hydrated.Slug == slug {
-				candidates = append(candidates, hydrated)
+				alreadyPresent := false
+				for _, candidate := range candidates {
+					if candidate.CheckoutPath == hydrated.CheckoutPath {
+						alreadyPresent = true
+						break
+					}
+				}
+				if !alreadyPresent {
+					candidates = append(candidates, hydrated)
+				}
 			}
 		}
 	}

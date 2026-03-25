@@ -164,13 +164,64 @@ func TestSummonSupportsLocalFolderAlias(t *testing.T) {
 		t.Fatalf("Summon returned error for local folder alias: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "math")
+	link := filepath.Join(h.Workspace, "math-app")
 	target, err := os.Readlink(link)
 	if err != nil {
 		t.Fatalf("read symlink: %v", err)
 	}
 	if target != repoPath {
 		t.Fatalf("unexpected symlink target: %s", target)
+	}
+}
+
+func TestSummonSupportsTrustedWorktreeByBranchRef(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	base := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(base)
+	h.RunGit(base, "remote", "add", "origin", "https://github.com/acme/service.git")
+	h.RunGit(base, "branch", "feature/worktree")
+
+	worktreePath := filepath.Join(h.TrustedRoot, "service-feature")
+	h.RunGit(base, "worktree", "add", worktreePath, "feature/worktree")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Summon(h.Workspace, "acme/service"); err != nil {
+		t.Fatalf("Summon primary returned error: %v", err)
+	}
+	if err := app.Summon(h.Workspace, "acme/service/feature/worktree"); err != nil {
+		t.Fatalf("Summon worktree returned error: %v", err)
+	}
+
+	primaryLinkTarget, err := os.Readlink(filepath.Join(h.Workspace, "service"))
+	if err != nil {
+		t.Fatalf("read primary symlink: %v", err)
+	}
+	if primaryLinkTarget != base {
+		t.Fatalf("unexpected primary symlink target: %s", primaryLinkTarget)
+	}
+
+	worktreeLinkTarget, err := os.Readlink(filepath.Join(h.Workspace, "service-feature"))
+	if err != nil {
+		t.Fatalf("read worktree symlink: %v", err)
+	}
+	if worktreeLinkTarget != worktreePath {
+		t.Fatalf("unexpected worktree symlink target: %s", worktreeLinkTarget)
+	}
+
+	manifestBytes, err := os.ReadFile(manifestPath(h.Workspace))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if !strings.Contains(string(manifestBytes), "repo_ref: acme/service\n") {
+		t.Fatalf("expected primary manifest entry, got:\n%s", string(manifestBytes))
+	}
+	if !strings.Contains(string(manifestBytes), "repo_ref: acme/service/feature/worktree\n") {
+		t.Fatalf("expected worktree manifest entry, got:\n%s", string(manifestBytes))
 	}
 }
 
@@ -391,7 +442,7 @@ func TestDismissSupportsLocalFolderAlias(t *testing.T) {
 		t.Fatalf("Summon returned error for local folder alias: %v", err)
 	}
 
-	link := filepath.Join(h.Workspace, "math")
+	link := filepath.Join(h.Workspace, "math-app")
 	if _, err := os.Lstat(link); err != nil {
 		t.Fatalf("expected trusted symlink before dismiss: %v", err)
 	}

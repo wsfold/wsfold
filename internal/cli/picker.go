@@ -29,13 +29,16 @@ func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.W
 	if err != nil {
 		return nil, err
 	}
-	program := tea.NewProgram(
+	return runBubbleTeaPickerModel(model, stdout)
+}
+
+func runBubbleTeaPickerModel(model pickerModel, stdout io.Writer) ([]string, error) {
+	finalModel, err := tea.NewProgram(
 		model,
 		tea.WithInput(os.Stdin),
 		tea.WithOutput(stdout),
 		tea.WithAltScreen(),
-	)
-	finalModel, err := program.Run()
+	).Run()
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +53,13 @@ func runBubbleTeaPicker(app *wsfold.App, cwd string, command string, stdout io.W
 	return result.selectedValues(), nil
 }
 
+func runCandidatePicker(command string, candidates []wsfold.CompletionCandidate, stdout io.Writer) ([]string, error) {
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no candidates available for %s", command)
+	}
+	return runBubbleTeaPickerModel(newPickerModel(command, candidates), stdout)
+}
+
 func buildPickerModel(app *wsfold.App, cwd string, command string) (pickerModel, error) {
 	if command == "summon" {
 		state, err := app.TrustedSummonPickerState(cwd)
@@ -62,6 +72,20 @@ func buildPickerModel(app *wsfold.App, cwd string, command string) (pickerModel,
 		model.refreshing = state.Refreshing
 		if state.Refreshing {
 			model.initCmd = refreshTrustedSummonPickerCmd(app, cwd)
+		}
+		return model, nil
+	}
+	if command == "worktree-source" {
+		state, err := app.WorktreeSourcePickerState(cwd)
+		if err != nil {
+			return pickerModel{}, err
+		}
+
+		model := newPickerModel(command, state.Candidates)
+		model.status = state.Status
+		model.refreshing = state.Refreshing
+		if state.Refreshing {
+			model.initCmd = refreshWorktreeSourcePickerCmd(app, cwd)
 		}
 		return model, nil
 	}
@@ -99,11 +123,14 @@ type pickerModel struct {
 	status      string
 	refreshing  bool
 	initCmd     tea.Cmd
+	allowMulti  bool
+	allowCustom bool
+	navigated   bool
 }
 
 func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pickerModel {
 	input := textinput.New()
-	input.Placeholder = "Type to search"
+	input.Placeholder = pickerPlaceholder(command)
 	input.Prompt = "filter> "
 	input.Focus()
 	input.CharLimit = 256
@@ -123,6 +150,8 @@ func newPickerModel(command string, candidates []wsfold.CompletionCandidate) pic
 		items:       items,
 		selected:    map[string]bool{},
 		multiSelect: false,
+		allowMulti:  pickerAllowsMultiSelect(command),
+		allowCustom: pickerAllowsCustomInput(command),
 	}
 	model.refresh()
 	return model
@@ -170,12 +199,15 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.filtered) == 0 {
 				return m, nil
 			}
+			if !m.allowMulti {
+				return m, nil
+			}
 			if !m.multiSelect {
 				m.multiSelect = true
 				return m, nil
 			}
 			currentItem := m.filtered[m.cursor].candidate
-			if m.isReadOnlyAttached(currentItem) {
+			if !m.isSelectable(currentItem) {
 				return m, nil
 			}
 			current := candidateKey(currentItem)
@@ -187,7 +219,7 @@ func (m pickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refresh()
 			return m, nil
 		case "enter":
-			if !m.multiSelect && m.isCurrentRowReadOnlyAttached() {
+			if !m.multiSelect && m.isCurrentRowBlocked() {
 				return m, nil
 			}
 			if m.multiSelect && len(m.selected) == 0 {
@@ -214,12 +246,14 @@ func (m *pickerModel) refresh() {
 		m.filtered = append(m.filtered[:0], m.items...)
 		if m.restoreCursorForKey(currentKey) {
 			m.lastQuery = query
+			m.navigated = false
 			return
 		}
 		if m.cursor >= len(m.filtered) {
 			m.cursor = max(0, len(m.filtered)-1)
 		}
 		m.lastQuery = query
+		m.navigated = false
 		return
 	}
 
@@ -242,16 +276,19 @@ func (m *pickerModel) refresh() {
 	if len(m.filtered) == 0 {
 		m.cursor = 0
 		m.lastQuery = query
+		m.navigated = false
 		return
 	}
 	if m.restoreCursorForKey(currentKey) {
 		m.lastQuery = query
+		m.navigated = false
 		return
 	}
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
 	}
 	m.lastQuery = query
+	m.navigated = false
 }
 
 func (m *pickerModel) restoreCursorForKey(key string) bool {
@@ -306,6 +343,7 @@ func (m *pickerModel) moveCursor(delta int) {
 	if m.cursor >= len(m.filtered) {
 		m.cursor = len(m.filtered) - 1
 	}
+	m.navigated = true
 }
 
 func (m pickerModel) isReadOnlyAttached(candidate wsfold.CompletionCandidate) bool {
@@ -315,11 +353,18 @@ func (m pickerModel) isReadOnlyAttached(candidate wsfold.CompletionCandidate) bo
 	return m.command == "summon" || m.command == "summon-external"
 }
 
-func (m pickerModel) isCurrentRowReadOnlyAttached() bool {
+func (m pickerModel) isSelectable(candidate wsfold.CompletionCandidate) bool {
+	if candidate.Disabled {
+		return false
+	}
+	return !m.isReadOnlyAttached(candidate)
+}
+
+func (m pickerModel) isCurrentRowBlocked() bool {
 	if len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
 		return false
 	}
-	return m.isReadOnlyAttached(m.filtered[m.cursor].candidate)
+	return !m.isSelectable(m.filtered[m.cursor].candidate)
 }
 
 func (m pickerModel) View() string {
@@ -357,7 +402,7 @@ func (m pickerModel) View() string {
 			selectMarker := " "
 			if m.multiSelect {
 				selectMarker = emptyMarkerStyle.Render("○")
-				if m.isReadOnlyAttached(item) {
+				if !m.isSelectable(item) {
 					selectMarker = attachedStyle.Render("✓")
 				} else if m.selected[candidateKey(item)] {
 					selectMarker = markerStyle.Render("●")
@@ -393,11 +438,23 @@ func (m pickerModel) View() string {
 
 func (m pickerModel) selectedValues() []string {
 	if !m.multiSelect {
+		if m.allowCustom {
+			if custom := strings.TrimSpace(m.input.Value()); custom != "" {
+				for _, item := range m.items {
+					if strings.EqualFold(strings.TrimSpace(item.candidate.Value), custom) {
+						return []string{item.candidate.Value}
+					}
+				}
+				if !m.navigated || len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
+					return []string{custom}
+				}
+			}
+		}
 		if len(m.filtered) == 0 || m.cursor >= len(m.filtered) {
 			return nil
 		}
 		current := m.filtered[m.cursor].candidate
-		if m.isReadOnlyAttached(current) {
+		if !m.isSelectable(current) {
 			return nil
 		}
 		return []string{current.Value}
@@ -436,6 +493,12 @@ func (m pickerModel) hintText() string {
 		}
 		return "Space toggle, Enter apply, Esc cancel"
 	}
+	if m.allowCustom {
+		return "Enter select or use typed branch, Esc cancel"
+	}
+	if !m.allowMulti {
+		return "Enter select, Esc cancel"
+	}
 	return "Enter select, Space multi-select, Esc cancel"
 }
 
@@ -447,6 +510,10 @@ func pickerTitle(command string) string {
 		return "Choose an external repository to add to your workspace"
 	case "dismiss":
 		return "Select repository to dismiss"
+	case "worktree-source":
+		return "Choose a trusted repository to create a worktree from"
+	case "worktree-branch":
+		return "Choose or type a branch for the new worktree"
 	default:
 		return "Select repository"
 	}
@@ -454,10 +521,25 @@ func pickerTitle(command string) string {
 
 func (m pickerModel) title() string {
 	mode := "Single mode"
-	if m.multiSelect {
+	if m.allowMulti && m.multiSelect {
 		mode = "Multi mode"
 	}
 	return fmt.Sprintf("%s [%s]", pickerTitle(m.command), mode)
+}
+
+func pickerAllowsMultiSelect(command string) bool {
+	return command != "worktree-source" && command != "worktree-branch"
+}
+
+func pickerAllowsCustomInput(command string) bool {
+	return command == "worktree-branch"
+}
+
+func pickerPlaceholder(command string) string {
+	if command == "worktree-branch" {
+		return "Type to search or enter a new branch name"
+	}
+	return "Type to search"
 }
 
 func visibleRange(cursor int, total int, maxItems int) (int, int) {
@@ -517,6 +599,13 @@ func pickerSearchText(candidate wsfold.CompletionCandidate, command string) stri
 func refreshTrustedSummonPickerCmd(app *wsfold.App, cwd string) tea.Cmd {
 	return func() tea.Msg {
 		state, err := app.RefreshTrustedSummonPickerState(cwd)
+		return trustedSummonRefreshMsg{state: state, err: err}
+	}
+}
+
+func refreshWorktreeSourcePickerCmd(app *wsfold.App, cwd string) tea.Cmd {
+	return func() tea.Msg {
+		state, err := app.RefreshWorktreeSourcePickerState(cwd)
 		return trustedSummonRefreshMsg{state: state, err: err}
 	}
 }

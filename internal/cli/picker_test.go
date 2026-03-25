@@ -253,6 +253,59 @@ func TestPickerModelEnterDoesNothingForAttachedSummonRowInSingleMode(t *testing.
 	}
 }
 
+func TestWorktreeSourcePickerStaysSingleSelect(t *testing.T) {
+	model := newPickerModel("worktree-source", []wsfold.CompletionCandidate{
+		{Value: "service", Name: "service"},
+		{Value: "worker", Name: "worker"},
+	})
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	model = updated.(pickerModel)
+
+	if model.multiSelect {
+		t.Fatalf("did not expect worktree source picker to enter multi-select mode")
+	}
+	if hint := model.hintText(); strings.Contains(hint, "multi-select") {
+		t.Fatalf("did not expect worktree source hint to mention multi-select, got %q", hint)
+	}
+}
+
+func TestWorktreeBranchPickerAllowsTypedBranchName(t *testing.T) {
+	model := newPickerModel("worktree-branch", []wsfold.CompletionCandidate{
+		{Value: "main", Name: "main"},
+		{Value: "release/2026-q1", Name: "release/2026-q1"},
+	})
+
+	for _, r := range "agent/refactor" {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(pickerModel)
+	}
+
+	selected := model.selectedValues()
+	if len(selected) != 1 || selected[0] != "agent/refactor" {
+		t.Fatalf("expected custom branch name to be returned, got %#v", selected)
+	}
+}
+
+func TestWorktreeBranchPickerUsesNavigatedExistingBranch(t *testing.T) {
+	model := newPickerModel("worktree-branch", []wsfold.CompletionCandidate{
+		{Value: "feature/api", Name: "feature/api"},
+		{Value: "feature/auth", Name: "feature/auth"},
+	})
+
+	for _, r := range "feature/a" {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(pickerModel)
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(pickerModel)
+
+	selected := model.selectedValues()
+	if len(selected) != 1 || selected[0] != "feature/auth" {
+		t.Fatalf("expected navigated existing branch to win over typed text, got %#v", selected)
+	}
+}
+
 func TestPickerModelSpaceDoesNothingForAttachedSummonRowInMultiMode(t *testing.T) {
 	model := newPickerModel("summon", []wsfold.CompletionCandidate{
 		{Value: "alpha", Name: "alpha", Attached: true},

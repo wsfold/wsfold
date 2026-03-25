@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -24,6 +25,11 @@ type App struct {
 	Runner Runner
 	Stdout io.Writer
 	Stderr io.Writer
+}
+
+type WorktreeOptions struct {
+	Name         string
+	CreateBranch bool
 }
 
 func NewApp() *App {
@@ -108,6 +114,69 @@ func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 	if err != nil {
 		return err
 	}
+
+	return a.attachRepo(primaryRoot, cfg, repo, requested)
+}
+
+func (a *App) Worktree(cwd string, ref string, branch string, opts WorktreeOptions) error {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	primaryRoot, err := resolveWorkspaceRoot(cwd)
+	if err != nil {
+		return err
+	}
+
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return fmt.Errorf("worktree requires a branch name")
+	}
+
+	source, err := resolveWorktreeSource(cfg, a.Runner, ref)
+	if err != nil {
+		return err
+	}
+
+	branchMap, err := worktreeBranchMapForSource(source, a.Runner)
+	if err != nil {
+		return err
+	}
+	existingSourceRef, branchExists := branchMap[branch]
+	if !opts.CreateBranch && !branchExists {
+		return fmt.Errorf("branch %q was not found for %s; use --create-branch to create it", branch, source.DisplayRef())
+	}
+
+	source, err = ensureWorktreeSourceReady(source, a.Runner, a.Stdout)
+	if err != nil {
+		return err
+	}
+
+	baseFolder := completionFolderName(source.CheckoutPath)
+	folderName := strings.TrimSpace(opts.Name)
+	if folderName == "" {
+		folderName = defaultWorktreeFolderName(baseFolder, branch)
+	}
+	targetPath := filepath.Join(cfg.TrustedDir, folderName)
+	if _, err := os.Stat(targetPath); err == nil {
+		return fmt.Errorf("worktree destination %s already exists", targetPath)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat worktree destination %s: %w", targetPath, err)
+	}
+
+	if err := createGitWorktree(a.Runner, source.CheckoutPath, targetPath, branch, opts.CreateBranch, existingSourceRef); err != nil {
+		return err
+	}
+
+	repo := buildRepo(targetPath, TrustClassTrusted, a.Runner)
+	if !repo.IsWorktree {
+		return fmt.Errorf("created checkout at %s is not recognized as a worktree", targetPath)
+	}
+	return a.attachRepo(primaryRoot, cfg, repo, TrustClassTrusted)
+}
+
+func (a *App) attachRepo(primaryRoot string, cfg Config, repo Repo, requested TrustClass) error {
 
 	manifest, err := loadManifest(primaryRoot)
 	if err != nil {

@@ -13,6 +13,7 @@ type CompletionCandidate struct {
 	Value       string
 	Description string
 	Attached    bool
+	Disabled    bool
 	TrustClass  TrustClass
 	Name        string
 	Slug        string
@@ -33,6 +34,8 @@ func (a *App) Complete(cwd string, command string, prefix string) ([]CompletionC
 		return a.completeRepoIndex(cwd, prefix, TrustClassTrusted)
 	case "summon-external":
 		return a.completeRepoIndex(cwd, prefix, TrustClassExternal)
+	case "worktree":
+		return a.completeWorktreeSources(cwd, prefix)
 	case "dismiss":
 		return a.completeManifest(cwd, prefix)
 	default:
@@ -80,6 +83,51 @@ func (a *App) RefreshTrustedSummonPickerState(cwd string) (TrustedSummonPickerSt
 	return state, refreshErr
 }
 
+func (a *App) WorktreeSourcePickerState(cwd string) (TrustedSummonPickerState, error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+
+	localCandidates, err := trustedLocalCompletionCandidates(cwd, cfg.TrustedDir, a.Runner)
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+	for i := range localCandidates {
+		if localCandidates[i].IsWorktree {
+			localCandidates[i].Disabled = true
+		}
+	}
+
+	remoteState, err := trustedRemoteIndexState(cfg, a.Runner)
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+
+	return TrustedSummonPickerState{
+		Candidates: mergeWorktreeSourceCandidates(localCandidates, trustedRemoteCompletionCandidates(remoteState.Repos)),
+		Refreshing: remoteState.NeedsRefresh && remoteState.GitHubReady,
+		Status:     remoteState.StatusMessage,
+	}, nil
+}
+
+func (a *App) RefreshWorktreeSourcePickerState(cwd string) (TrustedSummonPickerState, error) {
+	cfg, err := LoadConfig()
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+
+	refreshErr := error(nil)
+	if _, err := refreshTrustedRemoteIndex(cfg, a.Runner); err != nil {
+		refreshErr = err
+	}
+	state, err := a.WorktreeSourcePickerState(cwd)
+	if err != nil {
+		return TrustedSummonPickerState{}, err
+	}
+	return state, refreshErr
+}
+
 func (a *App) completeRepoIndex(cwd string, prefix string, requested TrustClass) ([]CompletionCandidate, error) {
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -101,6 +149,27 @@ func (a *App) completeRepoIndex(cwd string, prefix string, requested TrustClass)
 
 	sortCandidates(candidates)
 	return candidates, nil
+}
+
+func (a *App) completeWorktreeSources(cwd string, prefix string) ([]CompletionCandidate, error) {
+	state, err := a.WorktreeSourcePickerState(cwd)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := make([]CompletionCandidate, 0, len(state.Candidates))
+	for _, candidate := range state.Candidates {
+		if candidate.Disabled {
+			continue
+		}
+		if prefix != "" && !strings.HasPrefix(strings.ToLower(candidate.Value), strings.ToLower(prefix)) {
+			continue
+		}
+		filtered = append(filtered, candidate)
+	}
+
+	sortCandidates(filtered)
+	return filtered, nil
 }
 
 func trustedLocalCompletionCandidates(cwd string, root string, runner Runner) ([]CompletionCandidate, error) {
@@ -295,6 +364,49 @@ func mergeTrustedSummonCandidates(local []CompletionCandidate, remote []Completi
 		}
 		if leftName != rightName {
 			return leftName < rightName
+		}
+		if merged[i].Source != merged[j].Source {
+			return merged[i].Source < merged[j].Source
+		}
+		return merged[i].Value < merged[j].Value
+	})
+	return merged
+}
+
+func mergeWorktreeSourceCandidates(local []CompletionCandidate, remote []CompletionCandidate) []CompletionCandidate {
+	merged := make([]CompletionCandidate, 0, len(local)+len(remote))
+	localPrimaryBySlug := map[string]struct{}{}
+
+	for _, candidate := range local {
+		merged = append(merged, candidate)
+		if candidate.Slug != "" && !candidate.IsWorktree {
+			localPrimaryBySlug[strings.ToLower(candidate.Slug)] = struct{}{}
+		}
+	}
+
+	for _, candidate := range remote {
+		if candidate.Slug != "" {
+			if _, ok := localPrimaryBySlug[strings.ToLower(candidate.Slug)]; ok {
+				continue
+			}
+		}
+		merged = append(merged, candidate)
+	}
+
+	sort.Slice(merged, func(i, j int) bool {
+		leftName := merged[i].Name
+		if leftName == "" {
+			leftName = merged[i].Value
+		}
+		rightName := merged[j].Name
+		if rightName == "" {
+			rightName = merged[j].Value
+		}
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		if merged[i].Disabled != merged[j].Disabled {
+			return !merged[i].Disabled
 		}
 		if merged[i].Source != merged[j].Source {
 			return merged[i].Source < merged[j].Source

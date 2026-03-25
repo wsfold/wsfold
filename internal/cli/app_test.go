@@ -50,7 +50,7 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(output, "You can refer to a repository by its local folder name, GitHub owner/name, or owner/name/branch for a local worktree.") {
 		t.Fatalf("help output did not contain repo-ref format note: %q", output)
 	}
-	if !strings.Contains(output, "`wsfold worktree` is trusted-only, single-select in picker mode, and creates environment-local worktrees under WSFOLD_TRUSTED_DIR.") {
+	if !strings.Contains(output, "`wsfold worktree` is trusted-only and creates environment-local worktrees under WSFOLD_TRUSTED_DIR.") {
 		t.Fatalf("help output did not contain worktree command note: %q", output)
 	}
 	if !strings.Contains(output, "Flags:") || !strings.Contains(output, "-h, --help") || !strings.Contains(output, "-v, --version") {

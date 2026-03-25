@@ -59,7 +59,7 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(output, "Examples:") || !strings.Contains(output, `eval "$(wsfold completion zsh)"`) {
 		t.Fatalf("help output did not contain examples section: %q", output)
 	}
-	if !strings.Contains(output, "wsfold summon org_name/billing-service/feature/my-branch") {
+	if !strings.Contains(output, "wsfold summon org_name/billing-service/branch-name") {
 		t.Fatalf("help output did not contain worktree example: %q", output)
 	}
 

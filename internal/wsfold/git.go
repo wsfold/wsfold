@@ -179,6 +179,14 @@ func repoOrigin(runner Runner, path string) string {
 
 func repoBranch(runner Runner, path string) string {
 	branch, err := runner.Git(path, "branch", "--show-current")
+	if err == nil {
+		branch = strings.TrimSpace(branch)
+		if branch != "" {
+			return branch
+		}
+	}
+
+	branch, err = runner.Git(path, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		return ""
 	}

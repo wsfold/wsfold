@@ -142,10 +142,29 @@ func TestPickerModelRendersBranchAndWorktreeBadge(t *testing.T) {
 	})
 
 	view := stripANSI(model.View())
-	for _, expected := range []string{"service-feature", "acme/service", "feature/worktree", "worktree"} {
+	for _, expected := range []string{"service-feature", "acme/service", "worktree:feature/worktree"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("expected worktree row to render %q, got:\n%s", expected, view)
 		}
+	}
+}
+
+func TestPickerModelTruncatesVeryLongSlugColumn(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{
+			Value:  "mikhail-yaskou/vscode-as-mcp-server-with-approvals",
+			Name:   "vscode-as-mcp-server-with-approvals",
+			Slug:   "mikhail-yaskou/vscode-as-mcp-server-with-approvals",
+			Source: wsfold.CompletionSourceLocal,
+		},
+	})
+
+	view := stripANSI(model.View())
+	if !strings.Contains(view, "mikhail-yaskou/vscode-as-mcp-server…") {
+		t.Fatalf("expected long slug to be truncated in picker view, got:\n%s", view)
+	}
+	if strings.Contains(view, "mikhail-yaskou/vscode-as-mcp-server-with-approvals  ") {
+		t.Fatalf("did not expect full slug to force an oversized column, got:\n%s", view)
 	}
 }
 

@@ -336,7 +336,6 @@ func (m pickerModel) View() string {
 	trustedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	externalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	slugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	branchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
 	worktreeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
 
 	lines := []string{
@@ -364,7 +363,7 @@ func (m pickerModel) View() string {
 					selectMarker = markerStyle.Render("●")
 				}
 			}
-			render := renderPickerRow(item, m.command, selectMarker, widths, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, branchStyle, worktreeStyle, descStyle, i == m.cursor)
+			render := renderPickerRow(item, m.command, selectMarker, widths, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, worktreeStyle, descStyle, i == m.cursor)
 			if i == m.cursor {
 				prefix = "> "
 				render = selectedStyle.Render(render)
@@ -379,7 +378,7 @@ func (m pickerModel) View() string {
 		lines = append(lines, selectedSectionStyle.Render(fmt.Sprintf("Selected (%d)", len(selectedItems))))
 		widths := pickerColumnWidths(selectedItems, m.command)
 		for _, item := range selectedItems {
-			lines = append(lines, "  "+renderPickerRow(item.candidate, m.command, " ", widths, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, branchStyle, worktreeStyle, descStyle, false))
+			lines = append(lines, "  "+renderPickerRow(item.candidate, m.command, " ", widths, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, worktreeStyle, descStyle, false))
 		}
 	}
 
@@ -507,6 +506,9 @@ func pickerSearchText(candidate wsfold.CompletionCandidate, command string) stri
 	}
 	if candidate.IsWorktree {
 		parts = append(parts, "worktree")
+		if branch := strings.TrimSpace(candidate.Branch); branch != "" {
+			parts = append(parts, "worktree:"+branch)
+		}
 	}
 
 	return strings.TrimSpace(strings.Join(parts, " "))
@@ -524,7 +526,6 @@ type pickerWidths struct {
 	source int
 	slug   int
 	branch int
-	kind   int
 }
 
 func renderPickerRow(
@@ -538,7 +539,6 @@ func renderPickerRow(
 	trustedStyle lipgloss.Style,
 	externalStyle lipgloss.Style,
 	slugStyle lipgloss.Style,
-	branchStyle lipgloss.Style,
 	worktreeStyle lipgloss.Style,
 	descStyle lipgloss.Style,
 	active bool,
@@ -564,20 +564,12 @@ func renderPickerRow(
 	}
 
 	if widths.branch > 0 {
-		branch := lipgloss.NewStyle().Width(widths.branch).Render(truncateText(strings.TrimSpace(candidate.Branch), widths.branch))
+		branchText := pickerBranchText(candidate)
+		branch := lipgloss.NewStyle().Width(widths.branch).Render(truncateText(branchText, widths.branch))
 		if active {
 			row = fmt.Sprintf("%s  %s", row, branch)
 		} else {
-			row = fmt.Sprintf("%s  %s", row, branchStyle.Render(branch))
-		}
-	}
-
-	if widths.kind > 0 {
-		kind := lipgloss.NewStyle().Width(widths.kind).Render(truncateText(pickerKindText(candidate), widths.kind))
-		if active {
-			row = fmt.Sprintf("%s  %s", row, kind)
-		} else {
-			row = fmt.Sprintf("%s  %s", row, worktreeStyle.Render(kind))
+			row = fmt.Sprintf("%s  %s", row, renderBranchText(candidate, branch, worktreeStyle))
 		}
 	}
 
@@ -589,9 +581,8 @@ func pickerColumnWidths(items []pickerItem, command string) pickerWidths {
 	for _, item := range items {
 		widths.name = max(widths.name, min(displayWidth(pickerPrimaryText(item.candidate)), 28))
 		widths.source = max(widths.source, displayWidth(pickerSourceLabel(item.candidate, command)))
-		widths.slug = max(widths.slug, min(displayWidth(pickerSlugText(item.candidate)), 48))
-		widths.branch = max(widths.branch, min(displayWidth(strings.TrimSpace(item.candidate.Branch)), 24))
-		widths.kind = max(widths.kind, displayWidth(pickerKindText(item.candidate)))
+		widths.slug = max(widths.slug, min(displayWidth(pickerSlugText(item.candidate)), 36))
+		widths.branch = max(widths.branch, min(displayWidth(pickerBranchText(item.candidate)), 28))
 	}
 	if widths.name == 0 {
 		widths.name = 1
@@ -614,6 +605,32 @@ func pickerKindText(candidate wsfold.CompletionCandidate) string {
 		return "worktree"
 	}
 	return ""
+}
+
+func pickerBranchText(candidate wsfold.CompletionCandidate) string {
+	branch := strings.TrimSpace(candidate.Branch)
+	if candidate.IsWorktree {
+		if branch == "" {
+			return "worktree"
+		}
+		return "worktree:" + branch
+	}
+	return branch
+}
+
+func renderBranchText(candidate wsfold.CompletionCandidate, text string, worktreeStyle lipgloss.Style) string {
+	if !candidate.IsWorktree {
+		return text
+	}
+	branch := strings.TrimSpace(candidate.Branch)
+	if branch == "" {
+		return worktreeStyle.Render(text)
+	}
+	prefix := "worktree:"
+	if strings.HasPrefix(text, prefix) {
+		return worktreeStyle.Render(prefix) + text[len(prefix):]
+	}
+	return worktreeStyle.Render(text)
 }
 
 func pickerSourceLabel(candidate wsfold.CompletionCandidate, command string) string {

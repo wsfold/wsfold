@@ -225,6 +225,130 @@ func TestSummonSupportsTrustedWorktreeByBranchRef(t *testing.T) {
 	}
 }
 
+func TestWorktreeCreatesAndAttachesExistingLocalBranch(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	base := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(base)
+	h.RunGit(base, "remote", "add", "origin", "https://github.com/acme/service.git")
+	h.RunGit(base, "branch", "feature/worktree")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Worktree(h.Workspace, "service", "feature/worktree", WorktreeOptions{}); err != nil {
+		t.Fatalf("Worktree returned error: %v", err)
+	}
+
+	worktreePath := filepath.Join(h.TrustedRoot, "service-feature-worktree")
+	if _, err := os.Stat(filepath.Join(worktreePath, ".git")); err != nil {
+		t.Fatalf("expected created worktree checkout: %v", err)
+	}
+
+	target, err := os.Readlink(filepath.Join(h.Workspace, "service-feature-worktree"))
+	if err != nil {
+		t.Fatalf("read worktree symlink: %v", err)
+	}
+	if target != worktreePath {
+		t.Fatalf("unexpected worktree target: %s", target)
+	}
+
+	manifestBytes, err := os.ReadFile(manifestPath(h.Workspace))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if !strings.Contains(string(manifestBytes), "repo_ref: acme/service/feature/worktree\n") {
+		t.Fatalf("expected attached worktree manifest entry, got:\n%s", string(manifestBytes))
+	}
+}
+
+func TestWorktreeCreatesNewBranchWithExplicitName(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	base := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(base)
+	h.RunGit(base, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Worktree(h.Workspace, "acme/service", "agent/refactor", WorktreeOptions{Name: "custom-agent", CreateBranch: true}); err != nil {
+		t.Fatalf("Worktree returned error: %v", err)
+	}
+
+	worktreePath := filepath.Join(h.TrustedRoot, "custom-agent")
+	if branch := h.RunGit(worktreePath, "branch", "--show-current"); strings.TrimSpace(branch) != "agent/refactor" {
+		t.Fatalf("expected created branch checkout, got %q", branch)
+	}
+
+	target, err := os.Readlink(filepath.Join(h.Workspace, "custom-agent"))
+	if err != nil {
+		t.Fatalf("read worktree symlink: %v", err)
+	}
+	if target != worktreePath {
+		t.Fatalf("unexpected worktree symlink target: %s", target)
+	}
+}
+
+func TestWorktreeClonesTrustedRemoteAndAttachesBranch(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+	remote := h.CreateGitHubRemote("acme", "service")
+
+	clone := filepath.Join(h.Root, "seed-clone")
+	h.Clone(remote, clone)
+	h.RunGit(clone, "checkout", "-b", "feature/remote")
+	if err := os.WriteFile(filepath.Join(clone, "feature.txt"), []byte("remote branch\n"), 0o644); err != nil {
+		t.Fatalf("write feature branch file: %v", err)
+	}
+	h.RunGit(clone, "add", "feature.txt")
+	h.RunGit(clone, "commit", "-m", "feature remote")
+	h.RunGit(clone, "push", "origin", "feature/remote")
+
+	app := NewApp()
+	ghPath := writeFakeGHForCloneTest(t, h, true)
+	app.Runner = Runner{Env: []string{
+		"GIT_CONFIG_GLOBAL=" + h.GitConfig,
+		"PATH=" + prependTestPath(filepath.Dir(ghPath)),
+		"WSFOLD_TEST_REMOTES_ROOT=" + h.RemotesRoot,
+	}}
+
+	if err := app.Worktree(h.Workspace, "acme/service", "feature/remote", WorktreeOptions{}); err != nil {
+		t.Fatalf("Worktree returned error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(h.TrustedRoot, "service", ".git")); err != nil {
+		t.Fatalf("expected primary clone after remote source worktree: %v", err)
+	}
+	worktreePath := filepath.Join(h.TrustedRoot, "service-feature-remote")
+	if _, err := os.Stat(filepath.Join(worktreePath, ".git")); err != nil {
+		t.Fatalf("expected remote worktree checkout: %v", err)
+	}
+}
+
+func TestWorktreeRejectsMissingExistingBranchWithoutCreateFlag(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	base := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(base)
+	h.RunGit(base, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	err := app.Worktree(h.Workspace, "service", "missing/branch", WorktreeOptions{})
+	if err == nil || !strings.Contains(err.Error(), `use --create-branch to create it`) {
+		t.Fatalf("expected missing branch guidance, got %v", err)
+	}
+}
+
 func TestSummonUntrustedExistingAndMissingRepo(t *testing.T) {
 	t.Run("existing external repo", func(t *testing.T) {
 		h := testutil.NewHarness(t)

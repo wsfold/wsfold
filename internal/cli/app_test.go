@@ -50,6 +50,9 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(output, "You can refer to a repository by its local folder name, GitHub owner/name, or owner/name/branch for a local worktree.") {
 		t.Fatalf("help output did not contain repo-ref format note: %q", output)
 	}
+	if !strings.Contains(output, "`wsfold worktree` is trusted-only and creates environment-local worktrees under WSFOLD_TRUSTED_DIR.") {
+		t.Fatalf("help output did not contain worktree command note: %q", output)
+	}
 	if !strings.Contains(output, "Flags:") || !strings.Contains(output, "-h, --help") || !strings.Contains(output, "-v, --version") {
 		t.Fatalf("help output did not contain flags section: %q", output)
 	}
@@ -62,11 +65,15 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(output, "wsfold summon org_name/billing-service/branch-name") {
 		t.Fatalf("help output did not contain worktree example: %q", output)
 	}
+	if !strings.Contains(output, "wsfold worktree --create-branch org_name/billing-service agent/refactor") {
+		t.Fatalf("help output did not contain worktree create example: %q", output)
+	}
 
 	usageOrder := []string{
 		"wsfold summon [repo-ref]",
 		"wsfold summon-external [repo-ref]",
 		"wsfold dismiss [repo-ref]",
+		"wsfold worktree [repo-ref] [branch]",
 		"wsfold init",
 		"wsfold reindex",
 		"wsfold completion zsh",
@@ -88,6 +95,7 @@ func TestRunHelp(t *testing.T) {
 		"summon            attach a trusted repository to the workspace, local or remote",
 		"summon-external   add an external repository as a workspace root",
 		"dismiss           remove a repository from the current composition",
+		"worktree          create and attach a trusted local Git worktree",
 		"init              initialize the current directory as a wsfold workspace",
 		"reindex           refresh the trusted GitHub remote cache",
 		"completion        print shell autocompletion setup",
@@ -203,6 +211,9 @@ func TestRunCompletionZsh(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "reindex:refresh the trusted GitHub remote cache") {
 		t.Fatalf("completion output did not contain aligned reindex description: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "worktree:create and attach a trusted local Git worktree") {
+		t.Fatalf("completion output did not contain worktree description: %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), "completion:print shell autocompletion setup") {
 		t.Fatalf("completion output did not contain aligned completion description: %q", stdout.String())
@@ -348,6 +359,47 @@ func TestResolveCommandRefsRejectsExtraArgs(t *testing.T) {
 	_, err := resolveCommandRefs(wsfold.NewApp(), "/tmp/workspace", "summon", []string{"summon", "a", "b"}, &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), "summon accepts zero or one repo ref") {
 		t.Fatalf("unexpected resolveCommandRefs error: %v", err)
+	}
+}
+
+func TestParseWorktreeArgs(t *testing.T) {
+	opts, repoRef, branch, err := parseWorktreeArgs([]string{"worktree", "--name", "svc-feature", "--create-branch", "acme/service", "feature/new"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("parseWorktreeArgs returned error: %v", err)
+	}
+	if !opts.CreateBranch || opts.Name != "svc-feature" {
+		t.Fatalf("unexpected parsed worktree opts: %#v", opts)
+	}
+	if repoRef != "acme/service" || branch != "feature/new" {
+		t.Fatalf("unexpected parsed positional args: %q %q", repoRef, branch)
+	}
+}
+
+func TestRunDynamicCompletionForWorktreeSkipsExistingWorktreeSources(t *testing.T) {
+	h := testutil.NewHarness(t)
+	for _, env := range h.Env() {
+		key, value, _ := strings.Cut(env, "=")
+		t.Setenv(key, value)
+	}
+	t.Setenv("WSFOLD_PROJECTS_DIR", ".")
+
+	base := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(base)
+	h.RunGit(base, "remote", "add", "origin", "https://github.com/acme/service.git")
+	h.RunGit(base, "branch", "feature/worktree")
+	h.RunGit(base, "worktree", "add", filepath.Join(h.TrustedRoot, "service-feature"), "feature/worktree")
+
+	var stdout bytes.Buffer
+	if err := writeDynamicCompletions(h.Workspace, []string{"__complete", "worktree", "ser"}, &stdout); err != nil {
+		t.Fatalf("writeDynamicCompletions worktree returned error: %v", err)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "service") {
+		t.Fatalf("expected primary repo in worktree completion output, got %q", output)
+	}
+	if strings.Contains(output, "service-feature") || strings.Contains(output, "feature/worktree") {
+		t.Fatalf("did not expect existing worktree source in completion output, got %q", output)
 	}
 }
 

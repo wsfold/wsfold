@@ -94,6 +94,12 @@ wsfold summon org_name/service-name
 # Attach a local worktree by GitHub owner/repo/branch.
 wsfold summon org_name/service-name/feature/my-branch
 
+# Create and attach a trusted local worktree on an existing branch.
+wsfold worktree org_name/service-name release/2026-q1
+
+# Create and attach a trusted local worktree on a new branch.
+wsfold worktree --create-branch org_name/service-name agent/refactor
+
 # Dismiss a repository interactively.
 wsfold dismiss
 
@@ -117,6 +123,9 @@ Commands:
 - `wsfold dismiss [repo-ref]`
   Remove a repository from the current workspace composition. Without `repo-ref`, opens an interactive picker of attached repositories.
 
+- `wsfold worktree [repo-ref] [branch]`
+  Create a trusted local Git worktree under `WSFOLD_TRUSTED_DIR` and attach it to the current workspace immediately. With no positional arguments, the command runs in fully interactive mode: it opens a single-select source picker first and then a single-select branch picker. If `repo-ref` is provided but `branch` is omitted, the command skips the source picker and opens the branch picker for that repository. The branch picker lets you search existing branches or type a new branch name. Use `--create-branch` in non-interactive mode to force creation of a new branch, and `--name` to override the generated checkout folder name.
+
 - `wsfold reindex`
   Refresh the trusted GitHub remote cache. By default, the cache is refreshed in the background when `wsfold summon` opens and has a 24-hour lifetime. Use `reindex` to refresh it earlier.
 
@@ -126,6 +135,8 @@ Commands:
 - a local worktree reference in `owner/name/branch` form
 
 `owner/name` always refers to the primary checkout for that repository. If you want a linked worktree checkout, use `owner/name/branch` or the local folder name. Attached repositories appear in the generated `.code-workspace` file under their local checkout directory names, so a primary checkout and one or more worktrees can coexist in the same workspace.
+
+`wsfold worktree` is intentionally environment-local in v1. The created worktree is valid in the environment where the command runs, but `wsfold` does not try to make the same checkout portable across different absolute-path environments such as host and container filesystems.
 
 ## Visual Studio Code, Cursor, and Windsurf Integration
 

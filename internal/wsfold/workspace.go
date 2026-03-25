@@ -44,7 +44,7 @@ func renderWorkspace(manifest Manifest, projectsDirName string) ([]byte, error) 
 			return nil, err
 		}
 		folders = append(folders, workspaceFolder{
-			Name: repoNameFromRef(entry.RepoRef),
+			Name: filepath.Base(path),
 			Path: relativePath,
 		})
 	}
@@ -54,7 +54,7 @@ func renderWorkspace(manifest Manifest, projectsDirName string) ([]byte, error) 
 			return nil, err
 		}
 		folders = append(folders, workspaceFolder{
-			Name: repoNameFromRef(entry.RepoRef),
+			Name: filepath.Base(entry.CheckoutPath),
 			Path: relativePath,
 		})
 	}

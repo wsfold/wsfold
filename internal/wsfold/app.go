@@ -121,7 +121,7 @@ func (a *App) summon(cwd string, ref string, requested TrustClass) error {
 	}
 
 	if requested == TrustClassTrusted {
-		entry.MountPath = trustedMountPath(primaryRoot, cfg.ProjectsDirName, repo.Name)
+		entry.MountPath = trustedMountPath(primaryRoot, cfg.ProjectsDirName, completionFolderName(repo.CheckoutPath))
 		if err := ensureTrustedSymlink(entry.MountPath, repo.CheckoutPath); err != nil {
 			return err
 		}
@@ -156,7 +156,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 		return err
 	}
 
-	entry, ok, err := resolveManifestEntry(manifest, ref)
+	entry, ok, err := resolveManifestEntry(manifest, ref, a.Runner)
 	if err != nil {
 		return err
 	}

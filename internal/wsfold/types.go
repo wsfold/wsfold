@@ -1,6 +1,9 @@
 package wsfold
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type TrustClass string
 type CompletionSource string
@@ -16,14 +19,22 @@ type Repo struct {
 	LocalName    string
 	Name         string
 	Slug         string
+	Branch       string
+	IsWorktree   bool
 	CheckoutPath string
 	OriginURL    string
 	TrustClass   TrustClass
 }
 
 func (r Repo) DisplayRef() string {
-	if r.Slug != "" {
+	if r.Slug != "" && !r.IsWorktree {
 		return r.Slug
+	}
+	if r.Slug != "" && r.IsWorktree && strings.TrimSpace(r.Branch) != "" {
+		return r.Slug + "/" + strings.TrimSpace(r.Branch)
+	}
+	if r.LocalName != "" {
+		return r.LocalName
 	}
 	if r.Name != "" {
 		return r.Name

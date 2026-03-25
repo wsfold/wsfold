@@ -91,6 +91,9 @@ wsfold summon service-name
 # Attach a trusted repository by GitHub owner/repo name, cloning on demand if trusted.
 wsfold summon org_name/service-name
 
+# Attach a local worktree by GitHub owner/repo/branch.
+wsfold summon org_name/service-name/feature/my-branch
+
 # Dismiss a repository interactively.
 wsfold dismiss
 
@@ -117,9 +120,12 @@ Commands:
 - `wsfold reindex`
   Refresh the trusted GitHub remote cache. By default, the cache is refreshed in the background when `wsfold summon` opens and has a 24-hour lifetime. Use `reindex` to refresh it earlier.
 
-`[repo-ref]` accepts two forms:
+`[repo-ref]` accepts three forms:
 - a local folder name
 - a GitHub repository reference in `owner/name` form
+- a local worktree reference in `owner/name/branch` form
+
+`owner/name` always refers to the primary checkout for that repository. If you want a linked worktree checkout, use `owner/name/branch` or the local folder name. Attached repositories appear in the generated `.code-workspace` file under their local checkout directory names, so a primary checkout and one or more worktrees can coexist in the same workspace.
 
 ## Visual Studio Code, Cursor, and Windsurf Integration
 

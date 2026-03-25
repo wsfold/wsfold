@@ -80,7 +80,7 @@ func (m *Manifest) Upsert(entry Entry) {
 
 	replaced := false
 	for i := range *target {
-		if (*target)[i].CheckoutPath == entry.CheckoutPath || (*target)[i].RepoRef == entry.RepoRef {
+		if (*target)[i].CheckoutPath == entry.CheckoutPath {
 			(*target)[i] = entry
 			replaced = true
 			break
@@ -112,7 +112,7 @@ func sortEntries(entries []Entry) {
 func removeEntry(entries []Entry, target Entry) []Entry {
 	filtered := entries[:0]
 	for _, entry := range entries {
-		if entry.CheckoutPath == target.CheckoutPath || entry.RepoRef == target.RepoRef {
+		if entry.CheckoutPath == target.CheckoutPath {
 			continue
 		}
 		filtered = append(filtered, entry)
@@ -120,7 +120,7 @@ func removeEntry(entries []Entry, target Entry) []Entry {
 	return filtered
 }
 
-func resolveManifestEntry(manifest Manifest, ref string) (Entry, bool, error) {
+func resolveManifestEntry(manifest Manifest, ref string, runner Runner) (Entry, bool, error) {
 	ref = normalizeRepoRef(ref)
 	all := append(append([]Entry{}, manifest.Trusted...), manifest.External...)
 
@@ -129,10 +129,11 @@ func resolveManifestEntry(manifest Manifest, ref string) (Entry, bool, error) {
 	var local []Entry
 	shortName := repoNameFromRef(ref)
 	for _, entry := range all {
-		if normalizeRepoRef(entry.RepoRef) == ref {
+		repo := hydrateManifestRepo(entry, runner)
+		if manifestEntryMatchesExact(entry, repo, ref) {
 			exact = append(exact, entry)
 		}
-		if repoNameFromRef(entry.RepoRef) == shortName {
+		if !repo.IsWorktree && repo.Name == shortName {
 			short = append(short, entry)
 		}
 		if strings.EqualFold(completionFolderName(entry.CheckoutPath), ref) {
@@ -160,6 +161,29 @@ func resolveManifestEntry(manifest Manifest, ref string) (Entry, bool, error) {
 	}
 
 	return Entry{}, false, nil
+}
+
+func hydrateManifestRepo(entry Entry, runner Runner) Repo {
+	repo := hydrateRepo(buildRepoWithoutOrigin(entry.CheckoutPath, entry.TrustClass), runner)
+	if repo.Slug == "" {
+		if owner, name, ok := parseGitHubSlug(entry.RepoRef); ok {
+			repo.Slug = owner + "/" + name
+			repo.Name = name
+		}
+	}
+	if repo.IsWorktree && strings.TrimSpace(repo.Branch) == "" {
+		if _, _, branch, ok := splitSlugWithBranch(entry.RepoRef); ok {
+			repo.Branch = branch
+		}
+	}
+	return repo
+}
+
+func manifestEntryMatchesExact(entry Entry, repo Repo, ref string) bool {
+	if normalizeRepoRef(entry.RepoRef) == ref {
+		return true
+	}
+	return normalizeRepoRef(repo.DisplayRef()) == ref
 }
 
 func manifestAmbiguityError(ref string, entries []Entry) error {

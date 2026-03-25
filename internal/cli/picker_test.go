@@ -129,6 +129,78 @@ func TestPickerModelRendersSourceMarkersAndStatus(t *testing.T) {
 	}
 }
 
+func TestPickerModelRendersBranchAndWorktreeBadge(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{
+			Value:      "acme/service/feature/worktree",
+			Name:       "service-feature",
+			Slug:       "acme/service",
+			Branch:     "feature/worktree",
+			IsWorktree: true,
+			Source:     wsfold.CompletionSourceLocal,
+		},
+	})
+
+	view := stripANSI(model.View())
+	for _, expected := range []string{"service-feature", "acme/service", "feature/worktree", "worktree"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("expected worktree row to render %q, got:\n%s", expected, view)
+		}
+	}
+}
+
+func TestPickerModelSearchUsesBranchAndWorktreeBadge(t *testing.T) {
+	model := newPickerModel("summon", []wsfold.CompletionCandidate{
+		{
+			Value:      "acme/service/feature/worktree",
+			Name:       "service-feature",
+			Slug:       "acme/service",
+			Branch:     "feature/worktree",
+			IsWorktree: true,
+			Source:     wsfold.CompletionSourceLocal,
+		},
+		{
+			Value:  "acme/service",
+			Name:   "service",
+			Slug:   "acme/service",
+			Source: wsfold.CompletionSourceLocal,
+		},
+	})
+
+	for _, r := range "worktree" {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(pickerModel)
+	}
+	if len(model.filtered) != 1 || !model.filtered[0].candidate.IsWorktree {
+		t.Fatalf("expected worktree badge text to narrow to worktree row, got %#v", model.filtered)
+	}
+
+	model = newPickerModel("summon", []wsfold.CompletionCandidate{
+		{
+			Value:      "acme/service/feature/worktree",
+			Name:       "service-feature",
+			Slug:       "acme/service",
+			Branch:     "feature/worktree",
+			IsWorktree: true,
+			Source:     wsfold.CompletionSourceLocal,
+		},
+		{
+			Value:  "acme/service",
+			Name:   "service",
+			Slug:   "acme/service",
+			Source: wsfold.CompletionSourceLocal,
+		},
+	})
+
+	for _, r := range "feature/worktree" {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(pickerModel)
+	}
+	if len(model.filtered) != 1 || model.filtered[0].candidate.Branch != "feature/worktree" {
+		t.Fatalf("expected branch text to narrow to worktree row, got %#v", model.filtered)
+	}
+}
+
 func TestPickerModelRendersAddedLabelForAttachedSummonExternalRow(t *testing.T) {
 	model := newPickerModel("summon-external", []wsfold.CompletionCandidate{
 		{Value: "legacy-tool", Name: "legacy-tool", Slug: "acme/legacy-tool", Source: wsfold.CompletionSourceLocal, Attached: true},

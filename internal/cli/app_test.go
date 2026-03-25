@@ -47,7 +47,7 @@ func TestRunHelp(t *testing.T) {
 	if !strings.Contains(output, "If no repository argument is provided, the command opens an interactive picker with flexible search.") {
 		t.Fatalf("help output did not contain interactive picker note: %q", output)
 	}
-	if !strings.Contains(output, "You can refer to a repository by its local folder name or GitHub owner/name.") {
+	if !strings.Contains(output, "You can refer to a repository by its local folder name, GitHub owner/name, or owner/name/branch for a local worktree.") {
 		t.Fatalf("help output did not contain repo-ref format note: %q", output)
 	}
 	if !strings.Contains(output, "Flags:") || !strings.Contains(output, "-h, --help") || !strings.Contains(output, "-v, --version") {
@@ -58,6 +58,9 @@ func TestRunHelp(t *testing.T) {
 	}
 	if !strings.Contains(output, "Examples:") || !strings.Contains(output, `eval "$(wsfold completion zsh)"`) {
 		t.Fatalf("help output did not contain examples section: %q", output)
+	}
+	if !strings.Contains(output, "wsfold summon org_name/billing-service/feature/my-branch") {
+		t.Fatalf("help output did not contain worktree example: %q", output)
 	}
 
 	usageOrder := []string{

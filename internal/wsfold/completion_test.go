@@ -185,6 +185,81 @@ func TestCompletionCandidatesFromReposKeepDistinctKeysForSameValue(t *testing.T)
 	}
 }
 
+func TestCompletionCandidatesPreferBranchRefsForWorktrees(t *testing.T) {
+	repos := []Repo{
+		{
+			LocalName:    "service",
+			Name:         "service",
+			Slug:         "acme/service",
+			CheckoutPath: "/trusted/service",
+			TrustClass:   TrustClassTrusted,
+		},
+		{
+			LocalName:    "service-feature",
+			Name:         "service",
+			Slug:         "acme/service",
+			Branch:       "feature/worktree",
+			IsWorktree:   true,
+			CheckoutPath: "/trusted/service-feature",
+			TrustClass:   TrustClassTrusted,
+		},
+	}
+
+	candidates := completionCandidatesFromRepos(repos, map[string]bool{}, "")
+	if len(candidates) != 2 {
+		t.Fatalf("expected both primary and worktree candidates, got %#v", candidates)
+	}
+
+	values := map[string]CompletionCandidate{}
+	for _, candidate := range candidates {
+		values[candidate.Name] = candidate
+	}
+	if values["service"].Value != "service" {
+		t.Fatalf("expected primary checkout to keep folder-name value, got %#v", values["service"])
+	}
+	if values["service-feature"].Value != "acme/service/feature/worktree" {
+		t.Fatalf("expected worktree checkout to prefer slug/branch value, got %#v", values["service-feature"])
+	}
+	if !values["service-feature"].IsWorktree || values["service-feature"].Branch != "feature/worktree" {
+		t.Fatalf("expected worktree metadata on candidate, got %#v", values["service-feature"])
+	}
+}
+
+func TestCompleteDismissUsesBranchRefForWorktreeEntries(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setCompletionEnv(t, h)
+	initWorkspace(t, h)
+
+	base := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(base)
+	h.RunGit(base, "remote", "add", "origin", "https://github.com/acme/service.git")
+	h.RunGit(base, "branch", "feature/worktree")
+
+	worktreePath := filepath.Join(h.TrustedRoot, "service-feature")
+	h.RunGit(base, "worktree", "add", worktreePath, "feature/worktree")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+
+	if err := app.Summon(h.Workspace, "acme/service/feature/worktree"); err != nil {
+		t.Fatalf("Summon worktree returned error: %v", err)
+	}
+
+	candidates, err := app.Complete(h.Workspace, "dismiss", "")
+	if err != nil {
+		t.Fatalf("Complete dismiss returned error: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one attached worktree candidate, got %#v", candidates)
+	}
+	if candidates[0].Value != "acme/service/feature/worktree" {
+		t.Fatalf("expected dismiss candidate to use branch ref, got %#v", candidates[0])
+	}
+	if !candidates[0].IsWorktree || candidates[0].Branch != "feature/worktree" {
+		t.Fatalf("expected dismiss candidate to expose worktree metadata, got %#v", candidates[0])
+	}
+}
+
 func TestTrustedSummonPickerStateMergesCachedRemoteReposAndPrefersLocal(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setCompletionEnv(t, h)

@@ -176,3 +176,19 @@ func repoOrigin(runner Runner, path string) string {
 	}
 	return origin
 }
+
+func repoBranch(runner Runner, path string) string {
+	branch, err := runner.Git(path, "branch", "--show-current")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(branch)
+}
+
+func repoIsWorktree(path string) bool {
+	info, err := os.Lstat(filepath.Join(path, ".git"))
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
+}

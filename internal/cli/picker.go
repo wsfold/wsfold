@@ -336,6 +336,8 @@ func (m pickerModel) View() string {
 	trustedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	externalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	slugStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	branchStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
+	worktreeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
 
 	lines := []string{
 		titleStyle.Render(m.title()),
@@ -349,7 +351,7 @@ func (m pickerModel) View() string {
 		lines = append(lines, hintStyle.Render("No matches"))
 	} else {
 		start, end := visibleRange(m.cursor, len(m.filtered), pickerVisibleItems)
-		nameWidth, sourceWidth := pickerColumnWidths(m.filtered[start:end], m.command)
+		widths := pickerColumnWidths(m.filtered[start:end], m.command)
 		for i := start; i < end; i++ {
 			item := m.filtered[i].candidate
 			prefix := "  "
@@ -362,7 +364,7 @@ func (m pickerModel) View() string {
 					selectMarker = markerStyle.Render("●")
 				}
 			}
-			render := renderPickerRow(item, m.command, selectMarker, nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, descStyle, i == m.cursor)
+			render := renderPickerRow(item, m.command, selectMarker, widths, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, branchStyle, worktreeStyle, descStyle, i == m.cursor)
 			if i == m.cursor {
 				prefix = "> "
 				render = selectedStyle.Render(render)
@@ -375,9 +377,9 @@ func (m pickerModel) View() string {
 	if selectedItems := m.selectedItems(); len(selectedItems) > 0 {
 		lines = append(lines, "")
 		lines = append(lines, selectedSectionStyle.Render(fmt.Sprintf("Selected (%d)", len(selectedItems))))
-		nameWidth, sourceWidth := pickerColumnWidths(selectedItems, m.command)
+		widths := pickerColumnWidths(selectedItems, m.command)
 		for _, item := range selectedItems {
-			lines = append(lines, "  "+renderPickerRow(item.candidate, m.command, " ", nameWidth, sourceWidth, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, descStyle, false))
+			lines = append(lines, "  "+renderPickerRow(item.candidate, m.command, " ", widths, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle, slugStyle, branchStyle, worktreeStyle, descStyle, false))
 		}
 	}
 
@@ -497,12 +499,14 @@ func pickerSearchText(candidate wsfold.CompletionCandidate, command string) stri
 		parts = append(parts, source)
 	}
 
-	detail := candidate.Slug
-	if detail == "" {
-		detail = candidate.Description
+	if slug := pickerSlugText(candidate); strings.TrimSpace(slug) != "" && slug != parts[0] {
+		parts = append(parts, slug)
 	}
-	if strings.TrimSpace(detail) != "" && detail != parts[0] {
-		parts = append(parts, detail)
+	if branch := strings.TrimSpace(candidate.Branch); branch != "" {
+		parts = append(parts, branch)
+	}
+	if candidate.IsWorktree {
+		parts = append(parts, "worktree")
 	}
 
 	return strings.TrimSpace(strings.Join(parts, " "))
@@ -515,35 +519,41 @@ func refreshTrustedSummonPickerCmd(app *wsfold.App, cwd string) tea.Cmd {
 	}
 }
 
+type pickerWidths struct {
+	name   int
+	source int
+	slug   int
+	branch int
+	kind   int
+}
+
 func renderPickerRow(
 	candidate wsfold.CompletionCandidate,
 	command string,
 	selectMarker string,
-	nameWidth int,
-	sourceWidth int,
+	widths pickerWidths,
 	attachedStyle lipgloss.Style,
 	localStyle lipgloss.Style,
 	remoteStyle lipgloss.Style,
 	trustedStyle lipgloss.Style,
 	externalStyle lipgloss.Style,
 	slugStyle lipgloss.Style,
+	branchStyle lipgloss.Style,
+	worktreeStyle lipgloss.Style,
 	descStyle lipgloss.Style,
 	active bool,
 ) string {
-	name := lipgloss.NewStyle().Width(nameWidth).Render(truncateText(pickerPrimaryText(candidate), nameWidth))
+	name := lipgloss.NewStyle().Width(widths.name).Render(truncateText(pickerPrimaryText(candidate), widths.name))
 	row := fmt.Sprintf("%s %s", selectMarker, name)
 
 	if sourceText := pickerSourceLabel(candidate, command); sourceText != "" {
-		sourceText = lipgloss.NewStyle().Width(sourceWidth).Render(sourceText)
+		sourceText = lipgloss.NewStyle().Width(widths.source).Render(sourceText)
 		row = fmt.Sprintf("%s  %s", row, renderSourceMarkerText(candidate, command, sourceText, attachedStyle, localStyle, remoteStyle, trustedStyle, externalStyle))
 	}
 
-	detail := candidate.Slug
-	if detail == "" {
-		detail = candidate.Description
-	}
-	if detail != "" {
-		detail = truncateText(detail, 48)
+	if widths.slug > 0 {
+		detail := truncateText(pickerSlugText(candidate), widths.slug)
+		detail = lipgloss.NewStyle().Width(widths.slug).Render(detail)
 		if active {
 			row = fmt.Sprintf("%s  %s", row, detail)
 		} else if candidate.Slug != "" {
@@ -553,23 +563,57 @@ func renderPickerRow(
 		}
 	}
 
+	if widths.branch > 0 {
+		branch := lipgloss.NewStyle().Width(widths.branch).Render(truncateText(strings.TrimSpace(candidate.Branch), widths.branch))
+		if active {
+			row = fmt.Sprintf("%s  %s", row, branch)
+		} else {
+			row = fmt.Sprintf("%s  %s", row, branchStyle.Render(branch))
+		}
+	}
+
+	if widths.kind > 0 {
+		kind := lipgloss.NewStyle().Width(widths.kind).Render(truncateText(pickerKindText(candidate), widths.kind))
+		if active {
+			row = fmt.Sprintf("%s  %s", row, kind)
+		} else {
+			row = fmt.Sprintf("%s  %s", row, worktreeStyle.Render(kind))
+		}
+	}
+
 	return row
 }
 
-func pickerColumnWidths(items []pickerItem, command string) (int, int) {
-	nameWidth := 0
-	sourceWidth := 0
+func pickerColumnWidths(items []pickerItem, command string) pickerWidths {
+	widths := pickerWidths{}
 	for _, item := range items {
-		nameWidth = max(nameWidth, min(displayWidth(pickerPrimaryText(item.candidate)), 28))
-		sourceWidth = max(sourceWidth, displayWidth(pickerSourceLabel(item.candidate, command)))
+		widths.name = max(widths.name, min(displayWidth(pickerPrimaryText(item.candidate)), 28))
+		widths.source = max(widths.source, displayWidth(pickerSourceLabel(item.candidate, command)))
+		widths.slug = max(widths.slug, min(displayWidth(pickerSlugText(item.candidate)), 48))
+		widths.branch = max(widths.branch, min(displayWidth(strings.TrimSpace(item.candidate.Branch)), 24))
+		widths.kind = max(widths.kind, displayWidth(pickerKindText(item.candidate)))
 	}
-	if nameWidth == 0 {
-		nameWidth = 1
+	if widths.name == 0 {
+		widths.name = 1
 	}
-	if sourceWidth == 0 {
-		sourceWidth = len("remote")
+	if widths.source == 0 {
+		widths.source = len("remote")
 	}
-	return nameWidth, sourceWidth
+	return widths
+}
+
+func pickerSlugText(candidate wsfold.CompletionCandidate) string {
+	if candidate.Slug != "" {
+		return candidate.Slug
+	}
+	return candidate.Description
+}
+
+func pickerKindText(candidate wsfold.CompletionCandidate) string {
+	if candidate.IsWorktree {
+		return "worktree"
+	}
+	return ""
 }
 
 func pickerSourceLabel(candidate wsfold.CompletionCandidate, command string) string {

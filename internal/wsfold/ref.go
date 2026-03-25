@@ -24,8 +24,25 @@ func splitSlug(ref string) (string, string, bool) {
 	return strings.ToLower(parts[0]), strings.ToLower(parts[1]), true
 }
 
+func splitSlugWithBranch(ref string) (string, string, string, bool) {
+	normalized := normalizeRepoRef(ref)
+	parts := strings.Split(normalized, "/")
+	if len(parts) < 3 || parts[0] == "" || parts[1] == "" {
+		return "", "", "", false
+	}
+	branch := strings.TrimSpace(strings.Join(parts[2:], "/"))
+	if branch == "" {
+		return "", "", "", false
+	}
+	return strings.ToLower(parts[0]), strings.ToLower(parts[1]), branch, true
+}
+
 func repoNameFromRef(ref string) string {
 	if owner, name, ok := splitSlug(ref); ok {
+		_ = owner
+		return name
+	}
+	if owner, name, _, ok := splitSlugWithBranch(ref); ok {
 		_ = owner
 		return name
 	}

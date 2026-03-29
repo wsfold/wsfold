@@ -19,6 +19,13 @@ type Manifest struct {
 	External    []Entry `yaml:"external"`
 }
 
+func cloneManifest(in Manifest) Manifest {
+	out := in
+	out.Trusted = append([]Entry(nil), in.Trusted...)
+	out.External = append([]Entry(nil), in.External...)
+	return out
+}
+
 func manifestPath(primaryRoot string) string {
 	return filepath.Join(primaryRoot, ".wsfold", "manifest.yaml")
 }

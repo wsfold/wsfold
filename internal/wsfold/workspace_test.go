@@ -1,6 +1,7 @@
 package wsfold
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,11 +32,11 @@ func TestRenderWorkspaceMatchesGoldenAndIsDeterministic(t *testing.T) {
 		},
 	}
 
-	first, err := renderWorkspace(manifest, ".")
+	first, err := renderWorkspace(root, Manifest{}, manifest, ".")
 	if err != nil {
 		t.Fatalf("renderWorkspace returned error: %v", err)
 	}
-	second, err := renderWorkspace(manifest, ".")
+	second, err := renderWorkspace(root, Manifest{}, manifest, ".")
 	if err != nil {
 		t.Fatalf("renderWorkspace returned error: %v", err)
 	}
@@ -76,7 +77,7 @@ func TestRenderWorkspaceCustomProjectsDirKeepsSubdirExcludes(t *testing.T) {
 		},
 	}
 
-	data, err := renderWorkspace(manifest, "_ctx")
+	data, err := renderWorkspace(root, Manifest{}, manifest, "_ctx")
 	if err != nil {
 		t.Fatalf("renderWorkspace returned error: %v", err)
 	}
@@ -86,4 +87,168 @@ func TestRenderWorkspaceCustomProjectsDirKeepsSubdirExcludes(t *testing.T) {
 	if !strings.Contains(string(data), `"_ctx": true`) {
 		t.Fatalf("expected custom projects dir exclude:\n%s", string(data))
 	}
+}
+
+func TestRenderWorkspaceMergesExistingWorkspaceState(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	manifest := Manifest{
+		Version:     manifestVersion,
+		PrimaryRoot: root,
+		Trusted: []Entry{
+			{
+				RepoRef:      "acme/service",
+				CheckoutPath: "/trusted/acme/service",
+				TrustClass:   TrustClassTrusted,
+				MountPath:    filepath.Join(root, "service"),
+			},
+		},
+		External: []Entry{
+			{
+				RepoRef:      "legacy/tool",
+				CheckoutPath: "/external/legacy/tool",
+				TrustClass:   TrustClassExternal,
+			},
+		},
+	}
+
+	existing := `{
+	  "folders": [
+	    {"name": "manual", "path": "manual"},
+	    {"name": "old-primary", "path": ".", "extra": 1},
+	    {"name": "service", "path": "service", "tag": "keep"},
+	    {"name": "stale", "path": "old-service"}
+	  ],
+	  "settings": {
+	    "files.exclude": {"custom": true, "old-service": true},
+	    "files.watcherExclude": false,
+	    "search.exclude": {"custom": true, "old-service": true},
+	    "editor.tabSize": 8
+	  },
+	  "tasks": {"version": "2.0.0"}
+	}`
+	if err := os.WriteFile(workspacePath(root), []byte(existing), 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+
+	previous := Manifest{
+		Version:     manifestVersion,
+		PrimaryRoot: root,
+		Trusted: []Entry{
+			{
+				RepoRef:      "acme/old-service",
+				CheckoutPath: "/trusted/acme/old-service",
+				TrustClass:   TrustClassTrusted,
+				MountPath:    filepath.Join(root, "old-service"),
+			},
+		},
+	}
+
+	data, err := renderWorkspace(root, previous, manifest, ".")
+	if err != nil {
+		t.Fatalf("renderWorkspace returned error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal rendered workspace: %v", err)
+	}
+
+	tasks, ok := decoded["tasks"].(map[string]any)
+	if !ok || tasks["version"] != "2.0.0" {
+		t.Fatalf("expected tasks section to be preserved, got %#v", decoded["tasks"])
+	}
+
+	settings, ok := decoded["settings"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected settings object, got %#v", decoded["settings"])
+	}
+	if settings["editor.tabSize"] != float64(8) {
+		t.Fatalf("expected custom settings to survive, got %#v", settings["editor.tabSize"])
+	}
+
+	filesExclude, ok := settings["files.exclude"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected files.exclude object, got %#v", settings["files.exclude"])
+	}
+	if _, ok := filesExclude["old-service"]; ok {
+		t.Fatalf("expected stale managed exclude to be removed, got %#v", filesExclude)
+	}
+	if filesExclude["custom"] != true || filesExclude["service"] != true {
+		t.Fatalf("expected custom and managed excludes to coexist, got %#v", filesExclude)
+	}
+
+	watcherExclude, ok := settings["files.watcherExclude"].(map[string]any)
+	if !ok || watcherExclude["service"] != true {
+		t.Fatalf("expected invalid watcher setting to be replaced with managed object, got %#v", settings["files.watcherExclude"])
+	}
+
+	folders, ok := decoded["folders"].([]any)
+	if !ok {
+		t.Fatalf("expected folders array, got %#v", decoded["folders"])
+	}
+	paths := make([]string, 0, len(folders))
+	serviceTagged := false
+	for _, item := range folders {
+		folder, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		path, _ := folder["path"].(string)
+		paths = append(paths, path)
+		if path == "service" && folder["tag"] == "keep" {
+			serviceTagged = true
+		}
+	}
+	if !serviceTagged {
+		t.Fatalf("expected managed folder merge to preserve extra fields on existing root: %#v", folders)
+	}
+	if strings.Contains(strings.Join(paths, ","), "old-service") {
+		t.Fatalf("expected stale managed folder to be removed, got %v", paths)
+	}
+	if !containsString(paths, ".") || !containsString(paths, "manual") || !containsString(paths, "service") {
+		t.Fatalf("expected primary, manual and managed folders, got %v", paths)
+	}
+}
+
+func TestLoadWorkspaceFileSupportsJSONC(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	path := workspacePath(root)
+	input := `{
+	  // line comment
+	  "folders": [
+	    {"name": "root", "path": "."},
+	  ],
+	  "settings": {
+	    /* block comment */
+	    "files.exclude": {
+	      "tmp": true,
+	    },
+	  },
+	}`
+	if err := os.WriteFile(path, []byte(input), 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+
+	file, err := loadWorkspaceFile(path)
+	if err != nil {
+		t.Fatalf("loadWorkspaceFile returned error: %v", err)
+	}
+
+	folders, ok := file["folders"].([]any)
+	if !ok || len(folders) != 1 {
+		t.Fatalf("expected folders from JSONC workspace, got %#v", file["folders"])
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }

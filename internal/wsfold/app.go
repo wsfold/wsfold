@@ -91,7 +91,7 @@ func (a *App) Init(cwd string) error {
 	if err := saveManifest(primaryRoot, manifest); err != nil {
 		return err
 	}
-	if err := writeWorkspace(primaryRoot, manifest, cfg.ProjectsDirName); err != nil {
+	if err := writeWorkspace(primaryRoot, Manifest{}, manifest, cfg.ProjectsDirName); err != nil {
 		return err
 	}
 
@@ -182,6 +182,7 @@ func (a *App) attachRepo(primaryRoot string, cfg Config, repo Repo, requested Tr
 	if err != nil {
 		return err
 	}
+	previous := cloneManifest(manifest)
 
 	entry := Entry{
 		RepoRef:      repo.DisplayRef(),
@@ -200,7 +201,7 @@ func (a *App) attachRepo(primaryRoot string, cfg Config, repo Repo, requested Tr
 	if err := saveManifest(primaryRoot, manifest); err != nil {
 		return err
 	}
-	if err := writeWorkspace(primaryRoot, manifest, cfg.ProjectsDirName); err != nil {
+	if err := writeWorkspace(primaryRoot, previous, manifest, cfg.ProjectsDirName); err != nil {
 		return err
 	}
 
@@ -224,6 +225,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 	if err != nil {
 		return err
 	}
+	previous := cloneManifest(manifest)
 
 	entry, ok, err := resolveManifestEntry(manifest, ref, a.Runner)
 	if err != nil {
@@ -243,7 +245,7 @@ func (a *App) Dismiss(cwd string, ref string) error {
 	if err := saveManifest(primaryRoot, manifest); err != nil {
 		return err
 	}
-	if err := writeWorkspace(primaryRoot, manifest, cfg.ProjectsDirName); err != nil {
+	if err := writeWorkspace(primaryRoot, previous, manifest, cfg.ProjectsDirName); err != nil {
 		return err
 	}
 

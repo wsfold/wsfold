@@ -786,6 +786,43 @@ func TestInitCreatesManifestAndWorkspace(t *testing.T) {
 	}
 }
 
+func TestInitPreservesExistingWorkspaceSections(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+
+	existing := `{
+	  // keep init comment
+	  "folders": [
+	    {"name": "manual", "path": "manual"}
+	  ],
+	  "settings": {
+	    "editor.tabSize": 8,
+	    "search.exclude": {"custom": true}
+	  },
+	  "tasks": {"version": "2.0.0"}
+	}`
+	if err := os.WriteFile(workspacePath(h.Workspace), []byte(existing), 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+
+	app := NewApp()
+	if err := app.Init(h.Workspace); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+
+	workspaceBytes, err := os.ReadFile(workspacePath(h.Workspace))
+	if err != nil {
+		t.Fatalf("read workspace file: %v", err)
+	}
+	text := string(workspaceBytes)
+	if !strings.Contains(text, `"tasks": {`) || !strings.Contains(text, `"editor.tabSize": 8`) {
+		t.Fatalf("expected existing top-level sections and settings to survive:\n%s", text)
+	}
+	if !strings.Contains(text, `"path": "manual"`) || !strings.Contains(text, `// keep init comment`) {
+		t.Fatalf("expected manual folder to survive init:\n%s", text)
+	}
+}
+
 func TestResolveWorkspaceRootFindsNearestManifestUpTree(t *testing.T) {
 	h := testutil.NewHarness(t)
 	setEnv(t, h)
@@ -862,5 +899,118 @@ func TestSummonCustomProjectsDirStillMountsUnderSubdir(t *testing.T) {
 	}
 	if !strings.Contains(string(workspaceBytes), `"_ctx/service"`) || !strings.Contains(string(workspaceBytes), `"_ctx": true`) {
 		t.Fatalf("workspace should keep custom projects dir behavior:\n%s", string(workspaceBytes))
+	}
+}
+
+func TestSummonPreservesManualWorkspaceSettings(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	existing := `{
+	  "folders": [
+	    // keep summon folder comment
+	    {"name": "` + filepath.Base(h.Workspace) + `", "path": "."},
+	    {"name": "manual", "path": "manual"}
+	  ],
+	  "settings": {
+	    "files.exclude": {"custom": true},
+	    "files.watcherExclude": {"watch-custom": true},
+	    "search.exclude": {
+	      // keep summon exclude comment
+	      "search-custom": true,
+	    },
+	    "editor.tabSize": 2
+	  },
+	  "launch": {"configurations": []}
+	}`
+	if err := os.WriteFile(workspacePath(h.Workspace), []byte(existing), 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+
+	repoPath := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(repoPath)
+	h.RunGit(repoPath, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+
+	workspaceBytes, err := os.ReadFile(workspacePath(h.Workspace))
+	if err != nil {
+		t.Fatalf("read workspace file: %v", err)
+	}
+	text := string(workspaceBytes)
+	for _, expected := range []string{
+		`"custom": true`,
+		`"watch-custom": true`,
+		`"search-custom": true`,
+		`"editor.tabSize": 2`,
+		`"launch": {`,
+		`"path": "manual"`,
+		`"service": true`,
+		`// keep summon folder comment`,
+		`// keep summon exclude comment`,
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected workspace to preserve merged content %q:\n%s", expected, text)
+		}
+	}
+}
+
+func TestDismissRemovesOnlyManagedWorkspaceEntries(t *testing.T) {
+	h := testutil.NewHarness(t)
+	setEnv(t, h)
+	initWorkspace(t, h)
+
+	repoPath := filepath.Join(h.TrustedRoot, "service")
+	h.InitRepo(repoPath)
+	h.RunGit(repoPath, "remote", "add", "origin", "https://github.com/acme/service.git")
+
+	app := NewApp()
+	app.Runner = Runner{Env: []string{"GIT_CONFIG_GLOBAL=" + h.GitConfig}}
+	if err := app.Summon(h.Workspace, "service"); err != nil {
+		t.Fatalf("Summon returned error: %v", err)
+	}
+
+	existing := `{
+	  "folders": [
+	    {"name": "` + filepath.Base(h.Workspace) + `", "path": "."},
+	    {"name": "service", "path": "service"},
+	    // keep dismiss folder comment
+	    {"name": "manual", "path": "manual"}
+	  ],
+	  "settings": {
+	    "files.exclude": {"service": true, "custom": true},
+	    "files.watcherExclude": {"service": true, "custom-watch": true},
+	    "search.exclude": {
+	      "service": true,
+	      // keep dismiss exclude comment
+	      "custom-search": true
+	    }
+	  }
+	}`
+	if err := os.WriteFile(workspacePath(h.Workspace), []byte(existing), 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+
+	if err := app.Dismiss(h.Workspace, "service"); err != nil {
+		t.Fatalf("Dismiss returned error: %v", err)
+	}
+
+	workspaceBytes, err := os.ReadFile(workspacePath(h.Workspace))
+	if err != nil {
+		t.Fatalf("read workspace file: %v", err)
+	}
+	text := string(workspaceBytes)
+	if strings.Contains(text, `"path": "service"`) || strings.Contains(text, `"service": true`) {
+		t.Fatalf("expected dismiss to remove managed root and excludes:\n%s", text)
+	}
+	for _, expected := range []string{`"path": "manual"`, `"custom": true`, `"custom-watch": true`, `"custom-search": true`, `// keep dismiss folder comment`, `// keep dismiss exclude comment`} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected dismiss to keep manual workspace content %q:\n%s", expected, text)
+		}
 	}
 }

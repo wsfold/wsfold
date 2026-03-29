@@ -1,7 +1,6 @@
 package wsfold
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,9 +149,9 @@ func TestRenderWorkspaceMergesExistingWorkspaceState(t *testing.T) {
 		t.Fatalf("renderWorkspace returned error: %v", err)
 	}
 
-	var decoded map[string]any
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("unmarshal rendered workspace: %v", err)
+	decoded, err := decodeWorkspaceJSON(data)
+	if err != nil {
+		t.Fatalf("decodeWorkspaceJSON returned error: %v", err)
 	}
 
 	tasks, ok := decoded["tasks"].(map[string]any)
@@ -212,35 +211,85 @@ func TestRenderWorkspaceMergesExistingWorkspaceState(t *testing.T) {
 	}
 }
 
-func TestLoadWorkspaceFileSupportsJSONC(t *testing.T) {
+func TestRenderWorkspacePreservesJSONCComments(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	manifest := Manifest{
+		Version:     manifestVersion,
+		PrimaryRoot: root,
+		Trusted: []Entry{
+			{
+				RepoRef:      "acme/service",
+				CheckoutPath: "/trusted/acme/service",
+				TrustClass:   TrustClassTrusted,
+				MountPath:    filepath.Join(root, "service"),
+			},
+		},
+	}
+
+	existing := `{
+	  // keep top-level comment
+	  "folders": [
+	    // keep manual folder comment
+	    {"name": "manual", "path": "manual"},
+	    // keep managed folder comment
+	    {"name": "service", "path": "service"},
+	  ],
+	  "settings": {
+	    "files.exclude": {
+	      // keep custom exclude comment
+	      "custom": true,
+	      "service": true,
+	    },
+	  },
+	  // keep tasks comment
+	  "tasks": {"version": "2.0.0"},
+	}`
+	if err := os.WriteFile(workspacePath(root), []byte(existing), 0o644); err != nil {
+		t.Fatalf("write workspace: %v", err)
+	}
+
+	data, err := renderWorkspace(root, manifest, manifest, ".")
+	if err != nil {
+		t.Fatalf("renderWorkspace returned error: %v", err)
+	}
+	text := string(data)
+	for _, expected := range []string{
+		"// keep top-level comment",
+		"// keep manual folder comment",
+		"// keep managed folder comment",
+		"// keep custom exclude comment",
+		"// keep tasks comment",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("expected comment to survive: %s\n%s", expected, text)
+		}
+	}
+}
+
+func TestWriteWorkspaceRejectsInvalidJSONC(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	path := workspacePath(root)
-	input := `{
-	  // line comment
-	  "folders": [
-	    {"name": "root", "path": "."},
-	  ],
-	  "settings": {
-	    /* block comment */
-	    "files.exclude": {
-	      "tmp": true,
-	    },
-	  },
-	}`
+	input := "{\n  // broken\n  \"folders\": [\n"
 	if err := os.WriteFile(path, []byte(input), 0o644); err != nil {
 		t.Fatalf("write workspace: %v", err)
 	}
 
-	file, err := loadWorkspaceFile(path)
-	if err != nil {
-		t.Fatalf("loadWorkspaceFile returned error: %v", err)
+	manifest := Manifest{Version: manifestVersion, PrimaryRoot: root}
+	err := writeWorkspace(root, Manifest{}, manifest, ".")
+	if err == nil || !strings.Contains(err.Error(), "parse workspace as JSONC") {
+		t.Fatalf("expected parse error, got %v", err)
 	}
 
-	folders, ok := file["folders"].([]any)
-	if !ok || len(folders) != 1 {
-		t.Fatalf("expected folders from JSONC workspace, got %#v", file["folders"])
+	got, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("read workspace: %v", readErr)
+	}
+	if string(got) != input {
+		t.Fatalf("workspace file should remain unchanged on parse failure\nwant:\n%s\ngot:\n%s", input, string(got))
 	}
 }
 

@@ -791,6 +791,7 @@ func TestInitPreservesExistingWorkspaceSections(t *testing.T) {
 	setEnv(t, h)
 
 	existing := `{
+	  // keep init comment
 	  "folders": [
 	    {"name": "manual", "path": "manual"}
 	  ],
@@ -817,7 +818,7 @@ func TestInitPreservesExistingWorkspaceSections(t *testing.T) {
 	if !strings.Contains(text, `"tasks": {`) || !strings.Contains(text, `"editor.tabSize": 8`) {
 		t.Fatalf("expected existing top-level sections and settings to survive:\n%s", text)
 	}
-	if !strings.Contains(text, `"path": "manual"`) {
+	if !strings.Contains(text, `"path": "manual"`) || !strings.Contains(text, `// keep init comment`) {
 		t.Fatalf("expected manual folder to survive init:\n%s", text)
 	}
 }
@@ -908,13 +909,17 @@ func TestSummonPreservesManualWorkspaceSettings(t *testing.T) {
 
 	existing := `{
 	  "folders": [
+	    // keep summon folder comment
 	    {"name": "` + filepath.Base(h.Workspace) + `", "path": "."},
 	    {"name": "manual", "path": "manual"}
 	  ],
 	  "settings": {
 	    "files.exclude": {"custom": true},
 	    "files.watcherExclude": {"watch-custom": true},
-	    "search.exclude": {"search-custom": true},
+	    "search.exclude": {
+	      // keep summon exclude comment
+	      "search-custom": true,
+	    },
 	    "editor.tabSize": 2
 	  },
 	  "launch": {"configurations": []}
@@ -946,6 +951,8 @@ func TestSummonPreservesManualWorkspaceSettings(t *testing.T) {
 		`"launch": {`,
 		`"path": "manual"`,
 		`"service": true`,
+		`// keep summon folder comment`,
+		`// keep summon exclude comment`,
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("expected workspace to preserve merged content %q:\n%s", expected, text)
@@ -972,12 +979,17 @@ func TestDismissRemovesOnlyManagedWorkspaceEntries(t *testing.T) {
 	  "folders": [
 	    {"name": "` + filepath.Base(h.Workspace) + `", "path": "."},
 	    {"name": "service", "path": "service"},
+	    // keep dismiss folder comment
 	    {"name": "manual", "path": "manual"}
 	  ],
 	  "settings": {
 	    "files.exclude": {"service": true, "custom": true},
 	    "files.watcherExclude": {"service": true, "custom-watch": true},
-	    "search.exclude": {"service": true, "custom-search": true}
+	    "search.exclude": {
+	      "service": true,
+	      // keep dismiss exclude comment
+	      "custom-search": true
+	    }
 	  }
 	}`
 	if err := os.WriteFile(workspacePath(h.Workspace), []byte(existing), 0o644); err != nil {
@@ -996,7 +1008,7 @@ func TestDismissRemovesOnlyManagedWorkspaceEntries(t *testing.T) {
 	if strings.Contains(text, `"path": "service"`) || strings.Contains(text, `"service": true`) {
 		t.Fatalf("expected dismiss to remove managed root and excludes:\n%s", text)
 	}
-	for _, expected := range []string{`"path": "manual"`, `"custom": true`, `"custom-watch": true`, `"custom-search": true`} {
+	for _, expected := range []string{`"path": "manual"`, `"custom": true`, `"custom-watch": true`, `"custom-search": true`, `// keep dismiss folder comment`, `// keep dismiss exclude comment`} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("expected dismiss to keep manual workspace content %q:\n%s", expected, text)
 		}
